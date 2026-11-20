@@ -1,0 +1,726 @@
+<!DOCTYPE html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>營建噪音計算</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Noto+Sans+TC:wght@400;500;700&display=swap">
+<style>
+/* VOICE work: an acoustic engineer's monitoring console
+   IDEA a site-measurement instrument screen: dark panel, cyan readouts, amber warnings
+   PICTURE glowing level bars vs limits / site plan on graph paper / data tables
+   COLOUR deep slate ground, cyan accent, amber over-limit, red exceedance; light = clean lab UI
+   TYPE Chakra Petch (display/figures) + Noto Sans TC
+   LAYOUT blurred sticky nav, settings strip, active view; phone stacks rows into cards */
+:root{color-scheme:light dark;--bg:light-dark(#f4f8fa,#0a0e14);--ink:light-dark(#101a23,#e6eef5);--mute:light-dark(#54687a,#8da3b8);--con:light-dark(#d9e4ec,#1c2736);--con2:light-dark(#e9f0f5,#121a26);--line:light-dark(#c3d3de,#243245);--yel:light-dark(#dba000,#ffc53d);--acc:light-dark(#0a8f85,#36e0d0);--onacc:light-dark(#ffffff,#06211e);--bar:var(--acc);--bad:light-dark(#c03434,#ff6b6b);--grid:light-dark(rgba(10,60,80,.05),rgba(130,200,220,.055))}
+:root[data-theme=light]{color-scheme:light}:root[data-theme=dark]{color-scheme:dark}
+*{box-sizing:border-box;min-width:0}
+html{scroll-padding-top:120px}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 "Noto Sans TC","Chakra Petch",system-ui,sans-serif;overflow-x:clip;background-image:radial-gradient(1100px 440px at 75% -180px,color-mix(in srgb,var(--acc) 8%,transparent),transparent 70%);background-attachment:fixed}
+.band{padding:clamp(18px,3vw,36px) max(4vw,16px)}
+.wrap{max-width:1240px;margin:0 auto}
+h1{font-size:clamp(22px,3vw,30px);line-height:1.1;letter-spacing:-.02em;margin:0;font-weight:700}
+h2{font-size:21px;margin:0 0 12px;letter-spacing:-.01em}
+.rib{position:sticky;top:0;z-index:5;background:var(--bg);border-bottom:2px solid var(--ink)}
+.rib .wrap{display:flex;flex-wrap:wrap;align-items:end;gap:0 18px;padding:10px max(4vw,16px) 0}
+.rib h1{padding-bottom:10px;margin-right:auto}
+.tabs{display:flex;overflow-x:auto;gap:2px}
+.tabs a{flex:none;display:block;padding:10px 14px 8px;font-size:15px;color:var(--ink);text-decoration:none;border-bottom:4px solid transparent;white-space:nowrap}
+.tabs a small{display:block;font-size:11px;color:var(--mute)}
+.tabs a.on{border-bottom-color:var(--yel);font-weight:700;background:var(--con2)}
+.tabs a:hover{background:var(--con2)}
+.set{background:var(--con2);border-bottom:1px solid var(--line)}
+.set .wrap{display:flex;flex-wrap:wrap;gap:10px 18px;align-items:end;padding:12px max(4vw,16px)}
+label{font-size:13px;color:var(--mute);display:grid;gap:4px}
+select,input{font:inherit;font-size:16px;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:4px;padding:7px 9px;min-height:42px}
+input[type=number]{width:4.8em;text-align:right;font-variant-numeric:tabular-nums}
+input[type=checkbox]{min-height:auto;width:20px;height:20px;accent-color:var(--ink)}
+.chk{display:flex;gap:8px;align-items:center;font-size:15px;min-height:42px}
+select:focus-visible,input:focus-visible,button:focus-visible,.tabs a:focus-visible{outline:3px solid var(--yel);outline-offset:1px}
+button{font:inherit;font-size:15px;min-height:42px;padding:8px 14px;border:1px solid var(--ink);background:var(--bg);color:var(--ink);border-radius:4px;cursor:pointer}
+button:hover{background:var(--con2)}
+button.pri{background:var(--ink);color:var(--bg)}
+button.pri:hover{opacity:.88}
+button.x{border-color:transparent;min-width:36px;padding:4px;color:var(--mute)}
+.std{font-size:14px;color:var(--mute)}
+.std b{color:var(--ink);font-variant-numeric:tabular-nums}
+.figs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:1px;background:var(--line);border:1px solid var(--line);margin:0 0 20px}
+.figs div{background:var(--bg);padding:10px 12px}
+.figs b{display:block;font-size:clamp(22px,3vw,30px);line-height:1.1;font-variant-numeric:tabular-nums;white-space:nowrap}
+.figs span{font-size:13px;color:var(--mute)}
+.chart{display:grid;gap:6px;margin-top:8px}
+.cr{display:grid;grid-template-columns:190px minmax(0,1fr) 64px;gap:12px;align-items:center}
+.cr .lb{font-size:14px;line-height:1.25}
+.cr .lb small{display:block;color:var(--mute);font-size:13px}
+.trk{position:relative;height:26px;background:var(--con2)}
+.trk .over{position:absolute;top:0;bottom:0;right:0;background:var(--yel)}
+.trk .b{position:absolute;left:0;top:5px;bottom:5px;background:var(--bar)}
+.trk .lf{position:absolute;left:0;top:11px;height:4px;background:var(--con)}
+.trk .lm{position:absolute;top:-3px;bottom:-3px;width:2px;background:var(--bad)}
+.cr .v{text-align:right;font-variant-numeric:tabular-nums;font-weight:700;white-space:nowrap}
+.axis{display:grid;grid-template-columns:190px minmax(0,1fr) 64px;gap:12px;font-size:13px;color:var(--mute)}
+.axis .t{position:relative;height:18px}
+.axis .t span{position:absolute;transform:translateX(-50%);white-space:nowrap}
+.key{display:flex;flex-wrap:wrap;gap:6px 18px;font-size:13px;color:var(--mute);margin-top:12px}
+.key i{display:inline-block;width:18px;height:10px;vertical-align:-1px;margin-right:6px}
+.tools{display:flex;flex-wrap:wrap;gap:10px;margin:0 0 14px}
+.scroll{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:15px}
+th{font-size:13px;color:var(--mute);font-weight:500;text-align:left;padding:6px;border-bottom:1px solid var(--ink);white-space:nowrap}
+td{padding:4px 6px;border-bottom:1px solid var(--con);vertical-align:middle}
+td.n,th.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+tr.g td{background:var(--con);font-weight:700;padding:8px 6px;border-bottom:0}
+tr.g .flag{font-weight:500;font-size:13px;margin-left:10px}
+.flag.bad,td.bad{color:var(--bad);font-weight:700}
+td.hl{background:color-mix(in srgb,var(--yel) 45%,var(--bg))}
+td select{width:100%;min-width:9em}
+td .equ{min-width:13em}
+td input.t{width:100%;min-width:6em}
+.act{white-space:nowrap}
+.note{font-size:13px;color:var(--mute);margin-top:10px;max-width:80ch}
+.split{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:28px;align-items:start}
+.bar-in{display:grid;grid-template-columns:repeat(auto-fit,minmax(8em,1fr));gap:12px}
+.fig{position:relative;min-height:220px;background:var(--con2);border:1px solid var(--line)}
+.fig>svg{position:absolute;inset:0;width:100%;height:100%}
+svg text{font:13px "Chakra Petch","Noto Sans TC",sans-serif;fill:var(--ink);paint-order:stroke;stroke:var(--con2);stroke-width:4px}
+.res{font-size:clamp(26px,4vw,38px);font-weight:700;font-variant-numeric:tabular-nums;margin:10px 0 2px}
+.out{display:none;width:100%;min-height:150px;font:13px/1.4 ui-monospace,monospace;margin-top:10px}
+.out.on{display:block}
+.seg{display:inline-flex;border:1px solid var(--ink);border-radius:4px;overflow:hidden}
+.seg button{border:0;border-radius:0;min-height:38px}
+.seg button.on{background:var(--ink);color:var(--bg)}
+details{border-top:1px solid var(--line);padding-top:10px}
+summary{cursor:pointer;font-weight:700;min-height:42px;display:flex;align-items:center}
+.meth li{max-width:75ch}
+code{background:var(--con2);padding:1px 5px;border-radius:3px;overflow-wrap:anywhere}
+.stepbar{background:var(--bg);border-bottom:1px solid var(--line)}
+.steps{display:flex;overflow-x:auto;gap:8px;padding:8px max(4vw,16px);max-width:1240px;margin:0 auto}
+.steps a{flex:none;display:flex;gap:7px;align-items:center;padding:5px 11px;border:1px solid var(--line);border-radius:999px;font-size:13px;color:var(--ink);text-decoration:none;white-space:nowrap}
+.steps a span{color:var(--mute)}
+.steps i{width:8px;height:8px;border-radius:50%;background:var(--mute);flex:none}
+.steps a.ok i{background:var(--acc);box-shadow:0 0 6px var(--acc)}
+.steps a.warn i{background:var(--yel);box-shadow:0 0 6px var(--yel)}
+.steps a.warn span{color:var(--yel)}
+.steps a.cur{border-color:var(--acc)}
+[hidden]{display:none!important}
+@media(max-width:860px){.split{grid-template-columns:minmax(0,1fr)}.rib h1{font-size:19px}}
+@media(max-width:600px){
+ .figs{grid-template-columns:repeat(2,minmax(0,1fr))}
+ .cr,.axis{grid-template-columns:minmax(0,1fr) 56px;gap:4px 10px}
+ .cr .lb{grid-column:1/-1}.axis>div:first-child{display:none}
+ table{font-size:14px}
+ .stack thead{display:none}
+ .stack tr{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:6px 10px;padding:10px 0;border-bottom:1px solid var(--line)}
+ .stack tr.g{display:block;padding:0}
+ .stack td{border:0;padding:0;display:grid;gap:2px;text-align:left}
+ .stack td::before{content:attr(data-l);font-size:12px;color:var(--mute)}
+ .stack td.w{grid-column:1/-1}
+ .stack td.n{text-align:left}
+ .stack input[type=number]{width:100%}
+ .stack tr.g td{display:block;padding:8px}
+ .stack tr.g td::before{content:none}
+ .stack .act{display:flex;gap:6px}
+}
+@media(prefers-reduced-motion:no-preference){.trk .b{transition:width .35s ease}}
+/* ── tech console skin ── */
+h1,h2,.figs b,.cr .v,.res,.tabs a{font-family:"Chakra Petch","Noto Sans TC",sans-serif}
+.rib{background:color-mix(in srgb,var(--bg) 78%,transparent);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
+.rib h1{letter-spacing:.01em}
+.tabs a.on{border-bottom-color:var(--acc);box-shadow:inset 0 -16px 20px -18px var(--acc)}
+.set{background:color-mix(in srgb,var(--con2) 72%,var(--bg))}
+select,input,textarea{background:color-mix(in srgb,var(--bg) 55%,var(--con2));border-radius:8px}
+select:focus-visible,input:focus-visible,button:focus-visible,.tabs a:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
+button{border-radius:8px;border-color:var(--line)}
+button:hover{border-color:var(--acc);color:var(--acc);background:color-mix(in srgb,var(--acc) 8%,var(--bg))}
+button.pri{background:var(--acc);border-color:var(--acc);color:var(--onacc)}
+button.pri:hover{opacity:.9;color:var(--onacc)}
+.seg{border-color:var(--line);border-radius:8px}
+.seg button.on{background:var(--acc);color:var(--onacc)}
+.figs{border-radius:12px;overflow:hidden}
+.figs div{background:color-mix(in srgb,var(--con2) 55%,var(--bg))}
+.figs b{color:var(--acc);text-shadow:0 0 14px color-mix(in srgb,var(--acc) 35%,transparent)}
+.trk{border-radius:6px;overflow:hidden;background:color-mix(in srgb,var(--con2) 75%,var(--bg))}
+.trk .b{border-radius:3px;background:linear-gradient(90deg,color-mix(in srgb,var(--acc) 45%,var(--bg)),var(--acc));box-shadow:0 0 10px color-mix(in srgb,var(--acc) 45%,transparent)}
+.trk .over{background:repeating-linear-gradient(-45deg,color-mix(in srgb,var(--yel) 50%,transparent) 0 6px,color-mix(in srgb,var(--yel) 16%,transparent) 6px 12px)}
+.trk .lm{box-shadow:0 0 6px var(--bad)}
+.key i{border-radius:3px}
+.key i[style*="--yel"]{background:repeating-linear-gradient(-45deg,color-mix(in srgb,var(--yel) 50%,transparent) 0 4px,color-mix(in srgb,var(--yel) 16%,transparent) 4px 8px)!important}
+th{border-bottom:1px solid color-mix(in srgb,var(--acc) 55%,var(--line))}
+tr.g td{background:color-mix(in srgb,var(--acc) 10%,var(--con2))}
+td.hl{background:color-mix(in srgb,var(--acc) 16%,var(--bg))}
+.fig{border-radius:12px;background-image:linear-gradient(var(--grid) 1px,transparent 1px),linear-gradient(90deg,var(--grid) 1px,transparent 1px);background-size:26px 26px}
+.res{color:var(--acc);text-shadow:0 0 16px color-mix(in srgb,var(--acc) 35%,transparent)}
+.out{border-radius:8px}
+details{border-top-color:var(--line)}
+</style>
+</head>
+<body>
+<nav class="rib"><div class="wrap">
+ <h1 id="ttl">營建噪音計算</h1>
+ <div class="tabs" id="tabs">
+  <a href="#file"><small>STEP 1</small>專案檔案</a>
+  <a href="#site"><small>STEP 2</small>工區・項目</a>
+  <a href="#boundary"><small>STEP 3</small>周界計算</a>
+  <a href="#recs"><small>STEP 4</small>敏感受體</a>
+  <a href="#receivers"><small>STEP 5</small>影響評估</a>
+  <a href="#output"><small>STEP 6</small>製表輸出</a>
+  <a href="#db"><small>參考</small>施工機具</a>
+  <a href="#std"><small>參考</small>噪音標準</a>
+ </div>
+</div></nav>
+
+<div class="set"><div class="wrap">
+ <label>案名<input id="pname" type="text" style="width:13em"></label>
+ <label>工區噪音管制區<select id="zone"></select></label>
+ <label>時段<select id="per"><option value="0">日間</option><option value="1">晚間</option><option value="2">夜間</option></select></label>
+ <span class="chk"><input type="checkbox" id="spec"><label for="spec" style="color:inherit;font-size:15px">特定管制區（−5 dB）</label></span>
+ <span class="chk"><input type="checkbox" id="exc" checked><label for="exc" style="color:inherit;font-size:15px">r &gt; 50 m 加計 0.025 dB/m</label></span>
+ <div class="std" id="stdtxt"></div>
+</div></div>
+<div class="stepbar"><div class="steps" id="steps"></div></div>
+
+<main>
+<section class="band" id="v-file" hidden><div class="wrap">
+ <h2>專案檔案</h2>
+ <div class="split">
+  <div>
+   <h2 style="font-size:16px">另存專案</h2>
+   <p class="note" style="margin:0 0 10px">把目前的案名、設定、機具與受體存成 .json 專案檔，可跨裝置保存與交接（如同道路振動評估的檔案功能）。</p>
+   <div class="tools"><button class="pri" id="fsave">下載專案 .json</button><button id="fcopy">複製專案 JSON</button></div>
+  </div>
+  <div>
+   <h2 style="font-size:16px">開啟專案</h2>
+   <p class="note" style="margin:0 0 10px">選擇先前另存的 .json 專案檔，或把 JSON 內容貼進欄位後按匯入。</p>
+   <div class="tools"><label style="flex:1 1 14em">選擇檔案<input type="file" id="fopen" accept=".json,application/json"></label></div>
+   <textarea id="fpaste" class="out on" style="min-height:90px" placeholder="貼上專案 JSON…"></textarea>
+   <div class="tools" style="margin-top:8px"><button class="pri" id="fimp">匯入貼上的 JSON</button></div>
+  </div>
+ </div>
+ <p class="note" id="fmsg"></p>
+</div></section>
+<section class="band" id="v-site" hidden><div class="wrap">
+ <div class="split">
+  <div>
+   <h2>工區（施工範圍）</h2>
+   <div class="bar-in">
+    <label>工區長 L (m)<input id="siteL" type="number" min="1" step="1"></label>
+    <label>工區寬 W (m)<input id="siteW" type="number" min="1" step="1"></label>
+    <label>圍籬高度 (m)<input id="siteFh" type="number" min="0" step="0.1"></label>
+    <label>圍籬減音量 (dB)<input id="siteFil" type="number" min="0" step="0.1"></label>
+   </div>
+   <div class="std" id="siteinfo" style="margin-top:10px"></div>
+   <div class="tools" style="margin-top:12px">
+    <button id="aD">全部機具距離＝至周界</button>
+    <button id="aIL">全部機具 IL＝圍籬減音量</button>
+   </div>
+   <p class="note">「至周界」取機具置於工區中央時的最短周界距離 min(L,W)/2。圍籬減音量可先在「周界計算」分頁用插入損失計算器精算，再填入此欄套用。</p>
+   <h2 style="margin-top:22px">減音設施（減輕對策）</h2>
+   <div class="scroll"><table>
+    <thead><tr><th>納入</th><th>減音方法</th><th>減音內容</th><th class="n">減音量 dB</th><th></th></tr></thead>
+    <tbody id="mbody"></tbody>
+   </table></div>
+   <div class="tools" style="margin-top:10px"><button id="madd">＋ 新增設施</button></div>
+   <p class="note">勾選「納入」的設施，其減音量會與各列圍籬 IL 一併計入所有含對策的計算（周界有防音、受體影響「有對策」）；未勾選者僅作為對策清單記錄。</p>
+  </div>
+  <div>
+   <div class="fig" style="min-height:260px"><svg id="ssvg" role="img" aria-label="工區平面示意"></svg></div>
+   <h2 style="margin-top:22px">施工項目清單</h2>
+   <div class="split" style="gap:14px">
+    <label>工程名稱（每行一個）<textarea id="plist" class="out on" style="min-height:140px;margin-top:0"></textarea></label>
+    <label>工程項目（每行一個）<textarea id="ilist" class="out on" style="min-height:140px;margin-top:0"></textarea></label>
+   </div>
+   <p class="note">此清單提供機具輸入表「工程名稱／工程項目」欄的下拉建議（對應活頁簿「工程項目」表）。敏感受體請到「敏感受體」分頁編輯。</p>
+  </div>
+ </div>
+</div></section>
+<section class="band" id="v-boundary"><div class="wrap">
+ <div class="figs" id="figs"></div>
+ <h2 id="chh">各工項合成音量</h2>
+ <div class="axis"><div></div><div class="t" id="ticks"></div><div></div></div>
+ <div class="chart" id="chart"></div>
+ <div class="key"><span><i style="background:var(--bar)"></i>全頻合成 Leq</span><span><i style="background:var(--con);height:4px;outline:1px solid var(--mute)"></i>低頻合成 20–200 Hz</span><span><i style="background:var(--yel)"></i>超過全頻標準的區段</span><span><i style="background:var(--bad);width:3px"></i>單台最大音量（對照 Lmax）</span></div>
+
+ <h2 style="margin-top:28px">機具輸入（無防音工區噪音表）</h2>
+ <div class="tools">
+  <button class="pri" id="add">＋ 新增機具</button>
+  <button id="rst">還原範例案例</button>
+  <button id="clr">清空</button>
+  <button id="undo" disabled>復原上一步</button>
+ </div>
+ <div class="scroll"><table class="stack" id="tb">
+  <thead><tr><th>工程名稱</th><th>工程項目</th><th>機具類別</th><th>機具</th><th class="n">Lw</th><th class="n">數量</th><th class="n">距離 m</th><th class="n">圍籬 IL</th><th class="n">全頻</th><th class="n">低頻</th><th></th></tr></thead>
+  <tbody id="tbody"></tbody>
+ </table></div>
+ <p class="note">預設為 v2.5.5 活頁簿的 22 筆案例（「碼頭工桯」已更正為「碼頭工程」），以修正後公式重算。輸入只存在這台瀏覽器，要保存請用「製表輸出」複製到 Excel。</p>
+
+ <div class="split" style="margin-top:28px;border-top:1px solid var(--line);padding-top:20px">
+  <div>
+   <h2>施工圍籬插入損失</h2>
+   <div class="bar-in">
+    <label>音源高度 Sh (m)<input id="sh" type="number" step="0.1" value="1.5"></label>
+    <label>圍籬高度 Bh (m)<input id="bh" type="number" step="0.1" value="3"></label>
+    <label>受體高度 Rh (m)<input id="rh" type="number" step="0.1" value="1.2"></label>
+    <label>音源至圍籬 d1 (m)<input id="d1" type="number" step="0.5" value="5"></label>
+    <label>圍籬至受體 d2 (m)<input id="d2" type="number" step="0.5" value="10"></label>
+    <label>頻率 (Hz)<input id="hz" type="number" step="50" value="500"></label>
+   </div>
+   <div class="res" id="ilres">0.0 dB</div>
+   <div class="std" id="ilinfo"></div>
+   <div class="tools" style="margin-top:12px">
+    <label style="flex:1 1 14em">套用到工項<select id="ilgrp"></select></label>
+    <button class="pri" id="ilapply" style="align-self:end">套用</button>
+   </div>
+  </div>
+  <div class="fig"><svg id="bsvg" role="img" aria-label="音源、圍籬與受體的繞射路徑示意"></svg></div>
+ </div>
+</div></section>
+
+<section class="band" id="v-recs" hidden><div class="wrap">
+ <h2>敏感受體（受體表）</h2>
+ <div class="tools">
+  <button class="pri" id="radd">＋ 新增受體</button>
+  <a href="#receivers" style="align-self:center;color:var(--acc)">前往影響評估 →</a>
+ </div>
+ <div id="gmapcard" hidden>
+  <div class="tools" style="margin:0 0 10px">
+   <label style="flex:1 1 16em">地圖搜尋<input id="gq" type="search" placeholder="輸入地址或地標，如：台北港東防波堤"></label>
+   <label>類型<select id="gt"><option value="m">地圖</option><option value="k">衛星</option></select></label>
+   <button class="pri" id="ggo" style="align-self:end">定位</button>
+   <a id="gopen" target="_blank" rel="noopener" style="align-self:center;color:var(--acc)" hidden>在 Google 地圖開啟 ↗</a>
+  </div>
+  <div class="fig" style="min-height:clamp(280px,40vw,420px);margin-bottom:14px" id="gframe"><p class="note" style="padding:14px">輸入地址或地標後按「定位」，地圖由 Google 地圖提供。</p></div>
+ </div>
+ <div class="tools" style="margin:0 0 8px">
+  <span class="seg" role="group" aria-label="配置圖模式"><button id="mm-drag" class="on">拖曳受體</button><button id="mm-meas">量距離</button><button id="mm-add">點擊新增受體</button></span>
+  <button id="mm-clr" hidden>清除量測</button>
+  <span class="std" id="mm-out" style="align-self:center"></span>
+ </div>
+ <div class="fig" style="min-height:clamp(300px,42vw,460px);margin-bottom:10px"><svg id="msvg" role="img" aria-label="工區與敏感受體虛擬配置圖"></svg></div>
+ <p class="note" style="margin:0 0 16px">虛擬配置圖（非實際地圖）：中央黃框＝工區（取「工區・項目」的長寬），圓點＝敏感受體，<b>可直接拖曳圓點調整距離與方位</b>；「量距離」模式點兩點以上量折線距離，「點擊新增受體」模式點哪裡就把受體加在哪裡。紅點＝目前情境判定超標，N 為正北，方位角自北順時針。實際 Google 地圖卡在 GitHub 網頁版自動啟用（claude.ai 安全政策不允許嵌入外站地圖）。</p>
+ <div class="scroll"><table class="stack">
+  <thead><tr><th>編號</th><th>敏感受體</th><th>噪音管制區</th><th>所在地類別</th><th>特定</th><th class="n">背景 dB(A)</th><th class="n">距離 m</th><th class="n">方位°</th><th class="n">標準</th><th></th></tr></thead>
+  <tbody id="rbody"></tbody>
+ </table></div>
+ <p class="note">標準為該受體「管制區＋所在地類別」查噪音標準表的時段均能音量標準（特定管制區 −5 dB）。背景請填施工時段均能音量；距離為工區（音源）至該受體的距離。此表供「影響評估」分頁計算影響矩陣。</p>
+</div></section>
+
+<section class="band" id="v-receivers" hidden><div class="wrap">
+ <div class="tools">
+  <span class="seg" role="group" aria-label="對策情境"><button id="m-no" class="on">無對策</button><button id="m-yes">有對策（計入圍籬 IL）</button></span>
+  <a href="#recs" style="align-self:center;color:var(--acc)">編輯敏感受體 →</a>
+ </div>
+ <h2 id="imph">施工噪音影響摘要</h2>
+ <div class="std" id="impsum" style="margin:-4px 0 12px"></div>
+ <div class="scroll"><table id="imat"></table></div>
+ <p class="note">各工項欄＝該工項全部機具在受體距離的合成音量；合成＝背景 ⊕ 施工期間最大營建噪音；影響等級依 ①②③ 研判流程（v2.5.5 B_影響評估）。中度* 以上以紅字標示，表示需對策。</p>
+</div></section>
+
+<section class="band" id="v-db" hidden><div class="wrap">
+ <h2>施工機具資料庫（169 筆）</h2>
+ <div class="tools">
+  <label style="flex:1 1 16em">搜尋<input id="q" type="search" placeholder="機具名稱或類別…" style="width:100%"></label>
+  <label>機具類別<select id="qcat"><option value="">全部</option></select></label>
+ </div>
+ <div class="scroll"><table>
+  <thead><tr><th>營建工程類別</th><th>機具</th><th class="n">聲功率 dB(A)</th><th class="n">20–200 Hz</th><th class="n">音源高度 m</th><th>來源</th><th>CadnaA_ID</th></tr></thead>
+  <tbody id="dbody"></tbody>
+ </table></div>
+</div></section>
+
+<section class="band" id="v-std" hidden><div class="wrap">
+ <h2>噪音標準表（56 列）</h2>
+ <p class="note" style="margin:0 0 12px">工區周界對照「營建工程」列；受體對照其所在地類別之環境／管制標準。黃底為目前工區設定使用中的列。引用前請對照現行公告。</p>
+ <div class="scroll"><table>
+  <thead><tr><th>音源類別／所在地</th><th>管制區</th><th class="n">早</th><th class="n">日</th><th class="n">晚</th><th class="n">夜</th><th class="n">早max</th><th class="n">日max</th><th class="n">晚max</th><th class="n">夜max</th><th class="n">早LF</th><th class="n">日LF</th><th class="n">晚LF</th><th class="n">夜LF</th><th>法規</th></tr></thead>
+  <tbody id="sbody"></tbody>
+ </table></div>
+</div></section>
+
+<section class="band" id="v-output" hidden><div class="wrap">
+ <h2>製表輸出</h2>
+ <div class="tools" style="flex-direction:column;align-items:flex-start;gap:14px">
+  <div><button class="pri cp" data-k="sum">複製 工區噪音摘要表</button> <button class="dlb" data-k="sum">下載 CSV</button><span class="std">　工程×機具，無防音／有防音噪音量與合成、標準對照（對應「工區噪音-輸出摘要表」）</span></div>
+  <div><button class="pri cp" data-k="imp">複製 施工噪音影響摘要</button> <button class="dlb" data-k="imp">下載 CSV</button><span class="std">　受體×工項衰減後音量、合成、增量、影響等級（對應「施工噪音影響摘要」）</span></div>
+  <div><button class="pri cp" data-k="cad">複製 CadnaA 點音源</button> <button class="dlb" data-k="cad">下載 CSV</button><span class="std">　ID／X／Y／Z／LWTYP／LW_LI，依工項分組、同組 X 間距 10 m（對應「ForCadnaA」）</span></div>
+ </div>
+ <textarea class="out" id="out" readonly aria-label="複製內容"></textarea>
+ <p class="note" id="omsg"></p>
+ <p class="note">「下載 CSV」為 UTF-8（含 BOM），Excel 直接開啟不會亂碼；下載時會先出現確認提示。複製按鈕會複製 Tab 分隔文字，直接在 Excel 貼上即成表。若瀏覽器拒絕剪貼簿，文字會顯示在下方供手動複製。</p>
+ <details class="meth" style="margin-top:20px">
+  <summary>計算方法與相對 v2.5.5 的修正</summary>
+  <ul>
+   <li>單台：<code>L = Lw − 20·log10 r − 8</code>，r &gt; 50 m 時再減 <code>0.025·r</code>（可關閉）。</li>
+   <li>多台：<code>L = 單台 + 10·log10 M − IL</code>，不受輸入順序影響（修正 #1）。</li>
+   <li>低頻：<code>L_LF = L − (Lw − Lw_LF)</code>；合成：<code>10·log10 Σ 10^(Li/10)</code>，以「工程名稱＋工程項目」分組（修正 #2）。</li>
+   <li>圍籬：Maekawa 近似 <code>IL = 20·log10(√(2πN)/tanh√(2πN)) + 5</code>，<code>N = 2δ/λ</code>；直達路徑含高差，視線未遮斷 IL = 0，上限 20 dB（修正 #3）。</li>
+   <li>Lmax 以單台最大音量對照最大音量標準（修正 #4）。</li>
+   <li>含對策之計算（有防音／有對策）＝各列圍籬 IL＋「工區・項目」分頁勾選之減音設施合計。</li>
+   <li>影響等級：①背景＜標準且合成＜標準（差值＝合成−背景）；②背景＜標準且合成＞標準（差值＝合成−標準）；③背景≧標準（差值＝合成−背景）。</li>
+  </ul>
+ </details>
+</div></section>
+</main>
+
+<script>
+const EQ=[["衝擊式打樁工程", "柴油樁錘（標準型）【1.2 t】", 129, 103, 0.5, "EPA", "AC001"], ["衝擊式打樁工程", "柴油樁錘（標準型）【2.5 – 6.0 t】", 138, 112, 0.5, "EPA", "AC002"], ["衝擊式打樁工程", "落錘（標準型）【1.5 – 7.0 t】", 128, 102, 0.5, "EPA", "AC003"], ["衝擊式打樁工程", "內部落錘（標準型）", 113, 87, 0.5, "EPA", "AC004"], ["衝擊式打樁工程", "單動汽錘（標準型）", 130, 104, 0.5, "EPA", "AC005"], ["衝擊式打樁工程", "雙動汽錘（標準型）", 135, 109, 0.5, "EPA", "AC006"], ["衝擊式打樁工程", "振動式打樁機（標準型）【20 kW】", 115, 89, 0.5, "EPA", "AC007"], ["衝擊式打樁工程", "振動式打樁機（標準型）【30 kW】", 117, 91, 0.5, "EPA", "AC008"], ["衝擊式打樁工程", "振動式打樁機（標準型）【40 kW】", 118, 92, 0.5, "EPA", "AC009"], ["衝擊式打樁工程", "振動式打樁機（標準型）【60 kW】", 121, 95, 0.5, "EPA", "AC010"], ["衝擊式打樁工程", "單動油壓錘（標準型）", 126, 100, 0.5, "EPA", "AC011"], ["衝擊式打樁工程", "雙動油壓錘（標準型）", 129, 103, 0.5, "EPA", "AC012"], ["衝擊式打樁工程", "拔樁機（標準型）【1.3 t】", 129, 103, 0.5, "EPA", "AC013"], ["衝擊式打樁工程", "柴油樁錘（低噪音型）", 113, 87, 0.5, "EPA", "AC014"], ["衝擊式打樁工程", "振動式打樁機（低噪音型）", 113, 103, 0.5, "EPA", "AC015"], ["衝擊式打樁工程", "落錘（低噪音型）", 113, 87, 0.5, "EPA", "AC016"], ["衝擊式打樁工程", "汽錘（低噪音型）", 113, 87, 0.5, "EPA", "AC017"], ["其他基礎工程", "螺旋鑽機組（標準型）", 114, 88, 0.5, "EPA", "BC001"], ["其他基礎工程", "土鑽機組（標準型）【1.3 – 1.7 m (dia)】", 110, 84, 0.5, "EPA", "BC002"], ["其他基礎工程", "抓斗式挖泥機", 112, 86, 0.5, "EPA", "BC003"], ["其他基礎工程", "鏈斗式挖泥機", 118, 92, 0.5, "EPA", "BC004"], ["其他基礎工程", "大直徑鑽孔樁旋環式鑽機", 100, 74, 0.5, "EPA", "BC005"], ["其他基礎工程", "大直徑鑽孔樁擺動機", 115, 89, 0.5, "EPA", "BC006"], ["其他基礎工程", "商用電源反循環開挖機組", 97, 71, 0.5, "EPA", "BC007"], ["其他基礎工程", "柴油發電反循環開挖機組", 105, 79, 0.5, "EPA", "BC008"], ["其他基礎工程", "膜牆樁,油壓拔取機", 90, 64, 0.5, "EPA", "BC009"], ["其他基礎工程", "膜牆樁,漿土隔濾機", 105, 79, 0.5, "EPA", "BC010"], ["其他基礎工程", "螺旋鑽機組（低噪音型Earth_Auger）【未滿75 PS】", 98, 72, 0.5, "EPA", "BC011"], ["其他基礎工程", "螺旋鑽機組（低噪音型Earth_Auger）【75 PS以上,未滿140 PS】", 101, 75, 0.5, "EPA", "BC012"], ["其他基礎工程", "螺旋鑽機組（低噪音型Earth_Auger）【140 PS 以上】", 104, 78, 0.5, "EPA", "BC013"], ["其他基礎工程", "土鑽機組(低噪音型_Earth Drill)【未滿75 PS】", 98, 72, 0.5, "EPA", "BC014"], ["其他基礎工程", "土鑽機組(低噪音型_Earth Drill)【75 PS以上,未滿140 PS】", 101, 75, 0.5, "EPA", "BC015"], ["其他基礎工程", "土鑽機組(低噪音型_Earth Drill)【140 PS 以上】", 104, 78, 0.5, "EPA", "BC016"], ["其他基礎工程", "全套管開挖機組（低噪音型）【未滿75 PS】", 98, 72, 0.5, "EPA", "BC017"], ["其他基礎工程", "全套管開挖機組（低噪音型）【75 PS以上,未滿140 PS】", 101, 75, 0.5, "EPA", "BC018"], ["其他基礎工程", "全套管開挖機組（低噪音型）【140 PS以上,未滿210 PS】", 104, 78, 0.5, "EPA", "BC019"], ["其他基礎工程", "全套管開挖機組（低噪音型）【210 PS以上】", 107, 81, 0.5, "EPA", "BC020"], ["其他基礎工程", "油壓壓入機組（低噪音型）【未滿75 PS】", 98, 72, 0.5, "EPA", "BC021"], ["其他基礎工程", "油壓壓入機組（低噪音型）【75 PS以上,未滿140 PS】", 101, 75, 0.5, "EPA", "BC022"], ["其他基礎工程", "油壓壓入機組（低噪音型）【140 PS以上】", 104, 78, 0.5, "EPA", "BC023"], ["土方工程", "推土機（標準型）【4 – 10 t】", 107, 96, 0.5, "EPA", "CC001"], ["土方工程", "推土機（標準型）【15 t】", 110, 99, 0.5, "EPA", "CC002"], ["土方工程", "推土機（標準型）【20 t】", 113, 102, 0.5, "EPA", "CC003"], ["土方工程", "推土機（標準型）【30 t】", 116, 105, 0.5, "EPA", "CC004"], ["土方工程", "推土機（標準型）【40 t】", 119, 108, 0.5, "EPA", "CC005"], ["土方工程", "鏟土機（標準型）【0.4 m3】", 107, 97, 0.5, "EPA", "CC006"], ["土方工程", "鏟土機（標準型）【1.3 – 2.2 m3】", 110, 100, 0.5, "EPA", "CC007"], ["土方工程", "挖土機（標準型）【0.4 m3】", 109, 99, 0.5, "EPA", "CC008"], ["土方工程", "挖土機（標準型）【0.7 m3】", 111, 101, 0.5, "EPA", "CC009"], ["土方工程", "挖土機（標準型）【1.0 m3】", 113, 103, 0.5, "EPA", "CC010"], ["土方工程", "動力刮運機（標準型）【16 m3】", 109, 99, 0.5, "EPA", "CC011"], ["土方工程", "動力刮運機（標準型）【22 m3】", 117, 107, 0.5, "EPA", "CC012"], ["土方工程", "動力刮運機（標準型）【25 m3】", 119, 109, 0.5, "EPA", "CC013"], ["土方工程", "牽引式刮運機（標準型）【牽引機 15 t】", 110, 100, 0.5, "EPA", "CC014"], ["土方工程", "牽引式刮運機（標準型）【牽引機 21 t】", 112, 102, 0.5, "EPA", "CC015"], ["土方工程", "壓路機（標準型）【0.8 – 1.1 t】", 106, 94, 0.5, "EPA", "CC016"], ["土方工程", "壓路機（標準型）【1.2 – 4 t】", 111, 99, 0.5, "EPA", "CC017"], ["土方工程", "震動壓路機（標準型）【0.8 – 1.1 t】", 106, 97, 0.5, "EPA", "CC018"], ["土方工程", "震動壓路機（標準型）【1.2 – 4 t】", 111, 102, 0.5, "EPA", "CC019"], ["土方工程", "震動壓路機（標準型）【6 t 以上】", 114, 105, 0.5, "EPA", "CC020"], ["土方工程", "電動手提式石渣夯實機", 105, 87, 0.5, "EPA", "CC021"], ["土方工程", "汽油移動式夯土機", 108, 99, 0.5, "EPA", "CC022"], ["土方工程", "震動式壓實機", 105, 96, 0.5, "EPA", "CC023"], ["土方工程", "掘削機", 107, 97, 0.5, "EPA", "CC024"], ["土方工程", "平路機", 113, 103, "0..5", "EPA", "CC025"], ["土方工程", "刨路機,碾路機", 111, 101, 0.5, "EPA", "CC026"], ["土方工程", "鋪路機", 119, 109, 0.5, "EPA", "CC027"], ["土方工程", "裝料機", 110, 97, 0.5, "EPA", "CC028"], ["土方工程", "推土機（低噪音型）【未滿140 PS】", 102, 91, 0.5, "EPA", "CC029"], ["土方工程", "推土機（低噪音型）【140 PS以上,未滿210 PS】", 105, 94, 0.5, "EPA", "CC030"], ["土方工程", "推土機（低噪音型）【210 PS 以上】", 108, 97, 0.5, "EPA", "CC031"], ["土方工程", "動力鏟 （低噪音型）【未滿75 PS】", 95, 84, 0.5, "EPA", "CC032"], ["土方工程", "動力鏟 （低噪音型）【75 PS以上,未滿140 PS】", 98, 87, 0.5, "EPA", "CC033"], ["土方工程", "動力鏟 （低噪音型）【140 PS以上,未滿210 PS】", 101, 90, 0.5, "EPA", "CC034"], ["土方工程", "動力鏟 （低噪音型）【210 PS 以上】", 104, 93, 0.5, "EPA", "CC035"], ["土方工程", "膠輪式（履帶式）挖土機（低噪音型）【未滿140 PS】", 102, 92, 0.5, "EPA", "CC036"], ["土方工程", "膠輪式（履帶式）挖土機（低噪音型）【140 PS以上,未滿210 PS】", 105, 95, 0.5, "EPA", "CC037"], ["土方工程", "膠輪式（履帶式）挖土機（低噪音型）【210 PS 以上】", 108, 98, 0.5, "EPA", "CC038"], ["土方工程", "壓路機（低噪音型）【3 – 4 t】", 95, 84, 0.5, "EPA", "CC039"], ["土方工程", "壓路機（低噪音型）【8 – 12 t】", 105, 94, 0.5, "EPA", "CC040"], ["土方工程", "壓路機（低噪音型）【12 – 28 t】", 106, 95, 0.5, "EPA", "CC041"], ["土方工程", "震動壓路機（低噪音型）【70-80 kg-w】", 105, 96, 0.5, "EPA", "CC042"], ["土方工程", "震動壓路機（低噪音型）【220 kg-w】", 109, 100, 0.5, "EPA", "CC043"], ["拆除破碎及鑽孔作業", "手提式混凝土破碎機(標準型)【空壓式 7.5 kg-w】", 116, 86, 0.5, "EPA", "DC001"], ["拆除破碎及鑽孔作業", "手提式混凝土破碎機(標準型)【空壓式 20 kg-w】", 118, 88, 0.5, "EPA", "DC002"], ["拆除破碎及鑽孔作業", "手提式混凝土破碎機(標準型)【空壓式 30 kg-w】", 120, 90, 0.5, "EPA", "DC003"], ["拆除破碎及鑽孔作業", "手提式混凝土破碎機(標準型)【液壓式 30 kg-w】", 118, 88, 0.5, "EPA", "DC004"], ["拆除破碎及鑽孔作業", "大型破碎機(標準型)【空壓式 200 – 400 kg-w】", 124, 98, 0.5, "EPA", "DC005"], ["拆除破碎及鑽孔作業", "大型破碎機(標準型)【液壓式 600 kg-w】", 122, 96, 0.5, "EPA", "DC006"], ["拆除破碎及鑽孔作業", "鋼球【1.5 – 2 t】", 111, 85, 0.5, "EPA", "DC007"], ["拆除破碎及鑽孔作業", "汽油式混凝土切割機(開槽機)【80 cm】", 114, 104, 0.5, "EPA", "DC008"], ["拆除破碎及鑽孔作業", "手提式電鑽(磨)機", 98, 88, 0.5, "EPA", "DC009"], ["拆除破碎及鑽孔作業", "手提式撞擊電鑽", 103, 93, 0.5, "EPA", "DC010"], ["拆除破碎及鑽孔作業", "手提式氣動石鑽", 116, 106, 0.5, "EPA", "DC011"], ["拆除破碎及鑽孔作業", "履帶式油壓石鑽", 123, 113, 0.5, "EPA", "DC012"], ["拆除破碎及鑽孔作業", "履帶式氣動石鑽", 128, 118, 0.5, "EPA", "DC013"], ["拆除破碎及鑽孔作業", "混凝土鑽取機", 117, 107, 0.5, "EPA", "DC014"], ["拆除破碎及鑽孔作業", "手提式氣動剁暫機", 112, 102, 0.5, "EPA", "DC015"], ["拆除破碎及鑽孔作業", "手提式混凝土破碎機(低噪音型)【未滿10 kg-w】", 108, 78, 0.5, "EPA", "DC016"], ["拆除破碎及鑽孔作業", "手提式混凝土破碎機(低噪音型)【10 kg-w以上,未滿20 kg-w】", 108, 78, 0.5, "EPA", "DC017"], ["拆除破碎及鑽孔作業", "手提式混凝土破碎機(低噪音型)【20 kg-w以上,未滿35 kg-w】", 111, 81, 0.5, "EPA", "DC018"], ["拆除破碎及鑽孔作業", "手提式混凝土破碎機(低噪音型)【35 kg-w 以上】", 114, 84, 0.5, "EPA", "DC019"], ["拆除破碎及鑽孔作業", "手提式混凝土破碎機(低噪音型)【未滿75 PS】", 95, 65, 0.5, "EPA", "DC020"], ["拆除破碎及鑽孔作業", "手提式混凝土破碎機(低噪音型)【75 PS以上,未滿140 PS】", 98, 68, 0.5, "EPA", "DC021"], ["拆除破碎及鑽孔作業", "混凝土壓碎機組(低噪音型)【140 PS以上,未滿210 PS】", 101, 71, 0.5, "EPA", "DC022"], ["拆除破碎及鑽孔作業", "混凝土壓碎機組(低噪音型)【210 PS 以上】", 104, 74, 0.5, "EPA", "DC023"], ["混凝土工程", "混凝土配料機", 108, 96, 0.5, "EPA", "EC001"], ["混凝土工程", "混凝土拌合機【60 m3 / h】", 100, 88, 0.5, "EPA", "EC002"], ["混凝土工程", "瀝青拌合機【105 t / h】", 107, 95, 0.5, "EPA", "EC003"], ["混凝土工程", "混凝土預拌車【4.5 – 6.3 m3】", 108, 96, 0.5, "EPA", "EC004"], ["混凝土工程", "混凝土泵浦【60 m3 / h】", 109, 97, 0.5, "EPA", "EC005"], ["混凝土工程", "手提式混凝土震動機", 113, 101, 0.5, "EPA", "EC006"], ["混凝土工程", "瀝青舖面機", 109, 99, 0.5, "EPA", "EC007"], ["吊掛作業", "履帶式吊車,膠輪式吊車(低噪音型)【未滿75 PS】", 98, 85, 0.5, "EPA", "FC001"], ["吊掛作業", "履帶式吊車,膠輪式吊車(低噪音型)【75 PS以上,未滿140 PS】", 101, 88, 0.5, "EPA", "FC002"], ["吊掛作業", "履帶式吊車,膠輪式吊車(低噪音型)【140 PS以上,未滿210 PS】", 104, 91, 0.5, "EPA", "FC003"], ["吊掛作業", "履帶式吊車,膠輪式吊車(低噪音型)【210 PS 以上】", 107, 94, 0.5, "EPA", "FC004"], ["吊掛作業", "門型起重機", 103, 90, 0.5, "EPA", "FC005"], ["吊掛作業", "電動絞車", 95, 82, 0.5, "EPA", "FC006"], ["吊掛作業", "汽油絞車", 102, 89, 0.5, "EPA", "FC007"], ["吊掛作業", "氣動絞車", 110, 97, 0.5, "EPA", "FC008"], ["吊掛作業", "電動提昇機", 95, 82, 0.5, "EPA", "FC009"], ["吊掛作業", "油壓提昇機", 104, 91, 0.5, "EPA", "FC010"], ["吊掛作業", "氣壓提昇機", 108, 95, 0.5, "EPA", "FC011"], ["吊掛作業", "電動塔式起重機", 95, 82, 0.5, "EPA", "FC012"], ["吊掛作業", "躉船吊機", 104, 91, 0.5, "EPA", "FC013"], ["輔助設備", "手提式油壓動力供應器", 100, 87, 0.5, "EPA", "GC001"], ["輔助設備", "抽水泵（標準型）", 114, 105, 0.5, "EPA", "GC002"], ["輔助設備", "抽水泵（低噪音型）", 102, 93, 0.5, "EPA", "GC003"], ["輔助設備", "電動深水泵", 87, 78, 0.5, "EPA", "GC004"], ["輔助設備", "汽油深水泵", 103, 94, 0.5, "EPA", "GC005"], ["輔助設備", "抽氣扇", 108, 99, 0.5, "EPA", "GC006"], ["輔助設備", "柴油發電機（標準型）【30 kVA】", 105, 98, 0.5, "EPA", "GC007"], ["輔助設備", "柴油發電機（標準型）【65 kVA】", 106, 99, 0.5, "EPA", "GC008"], ["輔助設備", "柴油發電機（標準型）【125 kVA】", 109, 102, 0.5, "EPA", "GC009"], ["輔助設備", "柴油發電機（標準型）【175 kVA】", 112, 105, 0.5, "EPA", "GC010"], ["輔助設備", "空氣壓縮機（標準型）【3.5 – 5 m3 / min】", 107, 98, 0.5, "EPA", "GC011"], ["輔助設備", "空氣壓縮機（標準型）【10 – 17 m3 / min】", 113, 104, 0.5, "EPA", "GC012"], ["輔助設備", "發電機（低噪音型）【未滿75 PS】", 95, 88, 0.5, "EPA", "GC013"], ["輔助設備", "發電機（低噪音型）【75PS以上，未滿140 PS】", 98, 91, 0.5, "EPA", "GC014"], ["輔助設備", "發電機（低噪音型）【140PS以上，未滿210PS】", 101, 94, 0.5, "EPA", "GC015"], ["輔助設備", "發電機（低噪音型）【210 PS 以上】", 104, 97, 0.5, "EPA", "GC016"], ["輔助設備", "空氣壓縮機（低噪音型）【未滿10 m3 / min】", 100, 91, 0.5, "EPA", "GC017"], ["輔助設備", "空氣壓縮機（低噪音型）【10～30 m3 / min】", 102, 93, 0.5, "EPA", "GC018"], ["輔助設備", "空氣壓縮機（低噪音型）【30 m3 / min 以上】", 104, 95, 0.5, "EPA", "GC019"], ["運輸、傾卸車輛設備", "傾卸卡車【11 t】", 109, 99, 0.5, "EPA", "HC001"], ["運輸、傾卸車輛設備", "傾卸卡車【32 t】", 113, 103, 0.5, "EPA", "HC002"], ["運輸、傾卸車輛設備", "膠輪式裝載車【3.9 m3】", 106, 96, 0.5, "EPA", "HC003"], ["運輸、傾卸車輛設備", "膠輪式裝載車【4.7 – 7.7 m3】", 112, 102, 0.5, "EPA", "HC004"], ["運輸、傾卸車輛設備", "卸土機", 106, 96, 0.5, "EPA", "HC005"], ["運輸、傾卸車輛設備", "卸土車", 117, 107, 0.5, "EPA", "HC006"], ["運輸、傾卸車輛設備", "拖拉機", 118, 111, 0.5, "EPA", "HC007"], ["運輸、傾卸車輛設備", "拖船", 110, 104, 0.5, "EPA", "HC008"], ["運輸、傾卸車輛設備", "灑水車", 109, 83, 0.5, "自填", "HC009"], ["其他", "輸送帶", 90, 99, 0.5, "EPA", "IC0001"], ["其他", "電焊槍", 90, 83, 0.5, "EPA", "IC0002"], ["其他", "畫線機", 90, 83, 0.5, "EPA", "IC0003"], ["其他", "鋼筋彎曲機及切割機", 90, 83, 0.5, "EPA", "IC0004"], ["其他", "圓形木鋸", 108, 101, 0.5, "EPA", "IC0005"], ["其他", "手提式鏈鋸", 114, 107, 0.5, "EPA", "IC0006"], ["其他", "電動手提式木鉋床", 117, 110, 0.5, "EPA", "IC0007"], ["其他", "金卯釘機", 125, 99, 0.5, "EPA", "IC0008"], ["其他", "衝擊板手", 117, 91, 0.5, "EPA", "IC0009"], ["海事工程", "工作船", 100, 94, 0.5, "自填", "JC0001"], ["海事工程", "拋石船", 115, 109, 0.5, "自填", "JC0002"], ["海事工程", "反鏟式挖泥船", 115, 109, 0.5, "自填", "JC0003"], ["海事工程", "拖船", 110, 104, 0.5, "自填", "JC0004"], ["海事工程", "抽砂船", 115, 109, 0.5, "自填", "JC0005"], ["海事工程", "自昇式平台船", 110, 104, 0.5, "自填", "JC0006"]];
+const STD2=[["一般地區", "第一類管制區", null, 55, 50, 45, null, null, null, null, null, null, null, null, "噪音管制區劃定作業準則"], ["一般地區", "第二類管制區", null, 60, 55, 50, null, null, null, null, null, null, null, null, "噪音管制區劃定作業準則"], ["一般地區", "第三類管制區", null, 65, 60, 55, null, null, null, null, null, null, null, null, "噪音管制區劃定作業準則"], ["一般地區", "第四類管制區", null, 75, 70, 65, null, null, null, null, null, null, null, null, "噪音管制區劃定作業準則"], ["緊鄰未滿八公尺之道路邊地區", "第一類管制區", null, 71, 69, 63, null, null, null, null, null, null, null, null, "環境音量標準"], ["緊鄰未滿八公尺之道路邊地區", "第二類管制區", null, 71, 69, 63, null, null, null, null, null, null, null, null, "環境音量標準"], ["緊鄰未滿八公尺之道路邊地區", "第三類管制區", null, 74, 73, 69, null, null, null, null, null, null, null, null, "環境音量標準"], ["緊鄰未滿八公尺之道路邊地區", "第四類管制區", null, 74, 73, 69, null, null, null, null, null, null, null, null, "環境音量標準"], ["緊鄰八公尺以上之道路邊地區", "第一類管制區", null, 74, 70, 67, null, null, null, null, null, null, null, null, "環境音量標準"], ["緊鄰八公尺以上之道路邊地區", "第二類管制區", null, 74, 70, 67, null, null, null, null, null, null, null, null, "環境音量標準"], ["緊鄰八公尺以上之道路邊地區", "第三類管制區", null, 76, 75, 72, null, null, null, null, null, null, null, null, "環境音量標準"], ["緊鄰八公尺以上之道路邊地區", "第四類管制區", null, 76, 75, 72, null, null, null, null, null, null, null, null, "環境音量標準"], ["快速道路", "第一類管制區", 70, 74, 70, 67, null, null, null, null, null, null, null, null, "陸上運輸系統噪音管制標準"], ["快速道路", "第二類管制區", 70, 74, 70, 67, null, null, null, null, null, null, null, null, "陸上運輸系統噪音管制標準"], ["快速道路", "第三類管制區", 75, 76, 75, 72, null, null, null, null, null, null, null, null, "陸上運輸系統噪音管制標準"], ["快速道路", "第四類管制區", 75, 76, 75, 72, null, null, null, null, null, null, null, null, "陸上運輸系統噪音管制標準"], ["高速公路", "第一類管制區", 70, 74, 70, 67, null, null, null, null, null, null, null, null, "陸上運輸系統噪音管制標準"], ["高速公路", "第二類管制區", 70, 74, 70, 67, null, null, null, null, null, null, null, null, "陸上運輸系統噪音管制標準"], ["高速公路", "第三類管制區", 75, 76, 75, 73, null, null, null, null, null, null, null, null, "陸上運輸系統噪音管制標準"], ["高速公路", "第四類管制區", 75, 76, 75, 73, null, null, null, null, null, null, null, null, "陸上運輸系統噪音管制標準"], ["一般鐵路", "第一類管制區", 73, 73, 73, 70, 80, 80, 80, 80, null, null, null, null, "陸上運輸系統噪音管制標準"], ["一般鐵路", "第二類管制區", 73, 73, 73, 70, 80, 80, 80, 80, null, null, null, null, "陸上運輸系統噪音管制標準"], ["一般鐵路", "第三類管制區", 75, 75, 75, 70, 85, 85, 85, 85, null, null, null, null, "陸上運輸系統噪音管制標準"], ["一般鐵路", "第四類管制區", 75, 75, 75, 70, 85, 85, 85, 85, null, null, null, null, "陸上運輸系統噪音管制標準"], ["高速鐵路", "第一類管制區", 65, 70, 65, 60, 80, 80, 80, 80, null, null, null, null, "陸上運輸系統噪音管制標準"], ["高速鐵路", "第二類管制區", 65, 70, 65, 60, 80, 80, 80, 80, null, null, null, null, "陸上運輸系統噪音管制標準"], ["高速鐵路", "第三類管制區", 70, 75, 70, 65, 85, 85, 85, 85, null, null, null, null, "陸上運輸系統噪音管制標準"], ["高速鐵路", "第四類管制區", 70, 75, 70, 65, 85, 85, 85, 85, null, null, null, null, "陸上運輸系統噪音管制標準"], ["大眾捷運系統", "第一類管制區", 65, 70, 65, 60, 80, 80, 80, 80, null, null, null, null, "陸上運輸系統噪音管制標準"], ["大眾捷運系統", "第二類管制區", 65, 70, 65, 60, 80, 80, 80, 80, null, null, null, null, "陸上運輸系統噪音管制標準"], ["大眾捷運系統", "第三類管制區", 70, 75, 70, 65, 85, 85, 85, 85, null, null, null, null, "陸上運輸系統噪音管制標準"], ["大眾捷運系統", "第四類管制區", 70, 75, 70, 65, 85, 85, 85, 85, null, null, null, null, "陸上運輸系統噪音管制標準"], ["工廠(場)", "第一類管制區", null, 50, 45, 40, null, null, null, null, null, 39, 39, 36, "噪音管制標準"], ["工廠(場)", "第二類管制區", null, 57, 52, 47, null, null, null, null, null, 39, 39, 36, "噪音管制標準"], ["工廠(場)", "第三類管制區", null, 67, 57, 52, null, null, null, null, null, 44, 44, 41, "噪音管制標準"], ["工廠(場)", "第四類管制區", null, 80, 70, 65, null, null, null, null, null, 47, 47, 44, "噪音管制標準"], ["娛樂場所、營業場所", "第一類管制區", null, 55, 50, 40, null, null, null, null, null, 32, 32, 27, "噪音管制標準"], ["娛樂場所、營業場所", "第二類管制區", null, 57, 52, 47, null, null, null, null, null, 37, 32, 27, "噪音管制標準"], ["娛樂場所、營業場所", "第三類管制區", null, 67, 57, 52, null, null, null, null, null, 37, 37, 32, "噪音管制標準"], ["娛樂場所、營業場所", "第四類管制區", null, 80, 70, 65, null, null, null, null, null, 40, 40, 35, "噪音管制標準"], ["營建工程", "第一類管制區", null, 67, 47, 47, null, 100, 80, 70, null, 44, 44, 39, "噪音管制標準"], ["營建工程", "第二類管制區", null, 67, 57, 47, null, 100, 80, 70, null, 44, 44, 39, "噪音管制標準"], ["營建工程", "第三類管制區", null, 72, 67, 62, null, 100, 85, 75, null, 46, 46, 41, "噪音管制標準"], ["營建工程", "第四類管制區", null, 80, 70, 65, null, 100, 85, 75, null, 49, 49, 44, "噪音管制標準"], ["擴音設施", "第一類管制區", null, 57, 47, 40, null, null, null, null, null, null, null, null, "噪音管制標準"], ["擴音設施", "第二類管制區", null, 72, 57, 47, null, null, null, null, null, null, null, null, "噪音管制標準"], ["擴音設施", "第三類管制區", null, 77, 62, 52, null, null, null, null, null, null, null, null, "噪音管制標準"], ["擴音設施", "第四類管制區", null, 82, 72, 62, null, null, null, null, null, null, null, null, "噪音管制標準"], ["場所及風力發電機組以外之設施", "第一類管制區", null, 55, 50, 35, null, null, null, null, null, 32, 32, 27, "噪音管制標準"], ["場所及風力發電機組以外之設施", "第二類管制區", null, 57, 52, 42, null, null, null, null, null, 37, 32, 27, "噪音管制標準"], ["場所及風力發電機組以外之設施", "第三類管制區", null, 67, 57, 47, null, null, null, null, null, 37, 37, 32, "噪音管制標準"], ["場所及風力發電機組以外之設施", "第四類管制區", null, 80, 70, 60, null, null, null, null, null, 40, 40, 35, "噪音管制標準"], ["風力發電機組", "第一類管制區", null, null, null, null, null, null, null, null, null, 39, 39, 36, "噪音管制標準"], ["風力發電機組", "第二類管制區", null, null, null, null, null, null, null, null, null, 39, 39, 36, "噪音管制標準"], ["風力發電機組", "第三類管制區", null, null, null, null, null, null, null, null, null, 44, 44, 41, "噪音管制標準"], ["風力發電機組", "第四類管制區", null, null, null, null, null, null, null, null, null, 47, 47, 44, "噪音管制標準"]];
+const CSTD=[["第一類管制區", 67, 47, 47, 100, 80, 70, 44, 44, 39], ["第二類管制區", 67, 57, 47, 100, 80, 70, 44, 44, 39], ["第三類管制區", 72, 67, 62, 100, 85, 75, 46, 46, 41], ["第四類管制區", 80, 70, 65, 100, 85, 75, 49, 49, 44]];
+const SAMPLE=[["圍堤工程", "基礎工程", "海事工程", "工作船", 2, 15, 0], ["圍堤工程", "基礎工程", "海事工程", "拋石船", 2, 15, 0], ["圍堤工程", "基礎工程", "海事工程", "反鏟式挖泥船", 2, 15, 0], ["圍堤工程", "沉箱工程", "海事工程", "拖船", 3, 15, 0], ["圍堤工程", "沉箱工程", "海事工程", "抽砂船", 2, 15, 0], ["圍堤工程", "沉箱工程", "海事工程", "拋石船", 2, 15, 0], ["圍堤工程", "沉箱工程", "土方工程", "挖土機（標準型）【1.0 m3】", 2, 15, 0], ["圍堤工程", "封頂工程", "混凝土工程", "混凝土預拌車【4.5 – 6.3 m3】", 2, 15, 0], ["圍堤工程", "封頂工程", "海事工程", "拋石船", 2, 15, 0], ["圍堤工程", "封頂工程", "海事工程", "抽砂船", 2, 15, 0], ["造地工程", "造地工程", "土方工程", "推土機（標準型）【40 t】", 2, 15, 0], ["造地工程", "造地工程", "吊掛作業", "履帶式吊車,膠輪式吊車(低噪音型)【210 PS 以上】", 1, 15, 0], ["造地工程", "造地工程", "運輸、傾卸車輛設備", "傾卸卡車【32 t】", 1, 15, 0], ["碼頭工程", "基樁工程", "海事工程", "自昇式平台船", 2, 15, 0], ["碼頭工程", "基樁工程", "海事工程", "反鏟式挖泥船", 2, 15, 0], ["碼頭工程", "基礎工程", "海事工程", "抽砂船", 2, 15, 0], ["碼頭工程", "基礎工程", "海事工程", "拋石船", 2, 15, 0], ["建廠工程", "建廠工程", "土方工程", "推土機（標準型）【40 t】", 4, 15, 0], ["建廠工程", "建廠工程", "土方工程", "挖土機（標準型）【1.0 m3】", 8, 15, 0], ["建廠工程", "建廠工程", "運輸、傾卸車輛設備", "傾卸卡車【32 t】", 6, 15, 0], ["建廠工程", "建廠工程", "衝擊式打樁工程", "振動式打樁機（標準型）【30 kW】", 2, 15, 0], ["建廠工程", "建廠工程", "吊掛作業", "履帶式吊車,膠輪式吊車(低噪音型)【210 PS 以上】", 2, 15, 0]];
+const PROS=["圍堤工程", "建廠工程", "碼頭工程", "造地工程"];
+const ITEMS=["土方工程", "基樁工程", "基礎工程", "封頂工程", "打樁工程", "整地工程", "梁構吊裝工程", "橋梁上構工程", "橋梁下構工程", "沉箱工程", "造地工程", "鋪面工程", "開挖擋土工程"];
+const LOCS=["一般地區", "緊鄰未滿八公尺之道路邊地區", "緊鄰八公尺以上之道路邊地區", "快速道路", "高速公路", "一般鐵路", "高速鐵路", "大眾捷運系統", "工廠(場)", "娛樂場所、營業場所", "營建工程", "擴音設施", "場所及風力發電機組以外之設施", "風力發電機組"];
+const RECS0=[["R001", "東防波附近民宅", "第三類管制區", "緊鄰八公尺以上之道路邊地區", false, 49.5, 408], ["R002", "北堤濕地", "第一類管制區", "一般地區", false, 45.0, 150]];
+
+{
+const $=id=>document.getElementById(id);
+const KEY='cnc-v2';
+const lg=x=>Math.log10(x);
+const r1=x=>Number.isFinite(x)?x.toFixed(1):'—';
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const CATS=[...new Set(EQ.map(e=>e[0]))];
+const ZONES=['第一類管制區','第二類管制區','第三類管制區','第四類管制區'];
+const EQMAP=new Map(EQ.map(e=>[e[1],e]));
+const PN=['日間','晚間','夜間'];
+const mkR=a=>({pro:a[0],item:a[1],cat:a[2],equ:a[3],q:a[4],d:a[5],il:a[6]||0});
+const mkC=a=>({id:a[0],name:a[1],zone:a[2],loc:a[3],spec:a[4],bg:a[5],d:a[6],brg:a[7]});
+let S=null,hist=[];
+const load=()=>{try{const t=localStorage.getItem(KEY);if(t)return JSON.parse(t)}catch(e){}return null};
+const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}};
+const MEAS0=[['音源減量','低噪音機具'],['音源減量','減少操作時間'],['傳音路徑','加高隔音牆'],['受體保護','隔音窗']];
+const HOWS=['音源減量','傳音路徑','受體保護'];
+const mkM=a=>({on:false,how:a[0],what:a[1],db:0});
+const fresh=()=>({name:'港區圍堤造地工程（範例）',zone:3,per:0,spec:false,exc:true,mode:'no',rows:SAMPLE.map(mkR),recs:RECS0.map(mkC),site:{L:100,W:60,fh:3,fil:0},meas:MEAS0.map(mkM),pros:[...PROS],items:[...ITEMS]});
+const extraIL=()=>S&&S.meas?S.meas.reduce((a,m)=>a+(m.on?+m.db||0:0),0):0;
+const push=()=>{hist.push(JSON.stringify(S));if(hist.length>30)hist.shift();$('undo').disabled=false};
+
+function cstd(){const s=CSTD[S.zone],k=S.spec?-5:0,p=+S.per;return{F:s[1+p]+k,M:s[4+p]+k,L:s[7+p]+k}}
+function rstd(rec){const s=STD2.find(x=>x[0]===rec.loc&&x[1]===rec.zone);if(!s)return null;
+ const v=s[3+(+S.per)];return v==null?null:v+(rec.spec?-5:0)}
+function one(lw,d){let L=lw-20*lg(Math.max(d,0.1))-8;if(S.exc&&d>50)L-=0.025*d;return L}
+function calc(r,dd,useIL){const e=EQMAP.get(r.equ);if(!e)return null;
+ const lw=+e[2],lf=+e[3],d=dd??Math.max(+r.d||0,0.1),q=Math.max(+r.q||1,1),il=useIL===false?0:(+r.il||0)+extraIL();
+ const single=one(lw,d)-il,F=single+10*lg(q);return{lw,lf,single,F,LF:F-(lw-lf)}}
+function groups(dd,useIL){const m=new Map();
+ S.rows.forEach((r,i)=>{const k=(r.pro||'')+'｜'+(r.item||'');if(!m.has(k))m.set(k,{pro:r.pro,item:r.item,idx:[]});m.get(k).idx.push(i)});
+ return[...m.values()].map(g=>{let sF=0,sL=0,mx=-Infinity;
+  g.idx.forEach(i=>{const c=calc(S.rows[i],dd,useIL);if(!c)return;sF+=10**(c.F/10);sL+=10**(c.LF/10);mx=Math.max(mx,c.single)});
+  g.F=sF?10*lg(sF):NaN;g.LF=sL?10*lg(sL):NaN;g.mx=mx;return g})}
+function grade(bg,add,st){let f,dif;
+ if(bg<st&&add<st){f=1;dif=add-bg}else if(bg<st&&add>st){f=2;dif=add-st}else{f=3;dif=add-bg}
+ const d=Math.round(dif*10)/10,m=['①','②','③'][f-1];let w;
+ if(f===1)w=d<=5?'無或可忽略':d<=10?'輕微':'中度*';
+ else if(f===2)w=d<=3?'輕微':d<=5?'中度':d<=10?'嚴重*':'非常嚴重*';
+ else w=d<=3?'無或可忽略':d<=5?'輕微':d<=10?'中度*':d<=15?'嚴重*':'非常嚴重*';
+ return{dif:d,txt:m+w,bad:w.includes('*')}}
+
+function renderBoundary(){
+ const st=cstd(),G=groups(),pn=PN[S.per];
+ $('stdtxt').innerHTML=`營建工程${pn}標準　全頻 Leq <b>${st.F}</b>　Lmax <b>${st.M}</b>　低頻 <b>${st.L}</b> dB(A)`;
+ const oF=g=>g.F>st.F,oL=g=>g.LF>st.L,oM=g=>g.mx>st.M;
+ const nF=G.filter(oF).length,G0b=groups(undefined,false),nF0=G0b.filter(g=>g.F>st.F).length,top=G.reduce((a,g)=>g.F>(a?.F??-1)?g:a,null);
+ $('figs').innerHTML=[[G.length,'工項組數'],[S.rows.length,'機具筆數'],[top?r1(top.F):'—','最高合成 dB(A)'],[`${nF0} → ${nF}`,'超標組數 無→含對策']].map(f=>`<div><b>${f[0]}</b><span>${f[1]}</span></div>`).join('');
+ $('chh').textContent=G.length?(nF?`${G.length} 個工項中有 ${nF} 個超過${pn}全頻標準 ${st.F} dB(A)`:`全部 ${G.length} 個工項都在${pn}全頻標準 ${st.F} dB(A) 以內`):'尚未輸入機具';
+ const lo=40,hi=Math.max(110,Math.ceil((Math.max(...G.map(g=>g.F).filter(Number.isFinite),0)+5)/10)*10),pc=v=>Math.max(0,Math.min(100,(v-lo)/(hi-lo)*100));
+ const tk=[];for(let v=lo;v<=hi;v+=10)tk.push(v);
+ $('ticks').innerHTML=tk.map((v,i)=>`<span style="left:${pc(v)}%">${i%2&&innerWidth<520?'':v}</span>`).join('');
+ $('chart').innerHTML=G.map(g=>`<div class="cr"><div class="lb">${esc(g.item)}<small>${esc(g.pro)}・${g.idx.length} 筆</small></div>
+  <div class="trk" title="全頻 ${r1(g.F)}，低頻 ${r1(g.LF)}，單台最大 ${r1(g.mx)}"><div class="over" style="left:${pc(st.F)}%"></div><div class="b" style="width:${pc(g.F)}%"></div><div class="lf" style="width:${pc(g.LF)}%"></div><div class="lm" style="left:${pc(g.mx)}%"></div></div>
+  <div class="v">${r1(g.F)}</div></div>`).join('');
+ const opt=(arr,v)=>arr.map(x=>`<option${x===v?' selected':''}>${esc(x)}</option>`).join('');
+ $('tbody').innerHTML=G.map(g=>{
+  const fl=[oF(g)?'全頻超標':'',oM(g)?'Lmax超標':'',oL(g)?'低頻超標':''].filter(Boolean);
+  return`<tr class="g"><td colspan="11">${esc(g.pro)}／${esc(g.item)}　合成 ${r1(g.F)}・低頻 ${r1(g.LF)}・單台最大 ${r1(g.mx)}<span class="flag ${fl.length?'bad':''}">${fl.length?fl.join('、'):'符合標準'}</span></td></tr>`+
+  g.idx.map(i=>{const r=S.rows[i],c=calc(r),eqs=EQ.filter(e=>e[0]===r.cat).map(e=>e[1]);
+   return`<tr data-i="${i}">
+   <td data-l="工程名稱"><input class="t" data-f="pro" list="dlp" value="${esc(r.pro)}"></td>
+   <td data-l="工程項目"><input class="t" data-f="item" list="dli" value="${esc(r.item)}"></td>
+   <td data-l="機具類別"><select data-f="cat">${opt(CATS,r.cat)}</select></td>
+   <td data-l="機具" class="w"><select class="equ" data-f="equ">${eqs.includes(r.equ)?'':'<option value="">請選擇</option>'}${opt(eqs,r.equ)}</select></td>
+   <td data-l="Lw dB(A)" class="n">${c?c.lw:'—'}</td>
+   <td data-l="數量" class="n"><input type="number" min="1" step="1" data-f="q" value="${r.q}"></td>
+   <td data-l="距離 m" class="n"><input type="number" min="0.1" step="0.5" data-f="d" value="${r.d}"></td>
+   <td data-l="圍籬 IL" class="n"><input type="number" min="0" step="0.1" data-f="il" value="${r.il}"></td>
+   <td data-l="全頻" class="n"><b>${c?r1(c.F):'—'}</b></td>
+   <td data-l="低頻" class="n">${c?r1(c.LF):'—'}</td>
+   <td class="act"><button class="x" data-a="dup" aria-label="複製此列" title="複製此列">⧉</button><button class="x" data-a="del" aria-label="刪除此列" title="刪除此列">✕</button></td></tr>`}).join('')}).join('')||'<tr><td colspan="11" style="padding:24px 6px;color:var(--mute)">還沒有機具，按「＋ 新增機具」開始。</td></tr>';
+ const cur=$('ilgrp').value;
+ $('ilgrp').innerHTML=G.map(g=>`<option value="${esc(g.pro+'｜'+g.item)}">${esc(g.pro)}／${esc(g.item)}</option>`).join('');
+ if(cur)$('ilgrp').value=cur;
+}
+function renderRecs(){
+ const opt=(arr,v)=>arr.map(x=>`<option${x===v?' selected':''}>${esc(x)}</option>`).join('');
+ $('rbody').innerHTML=S.recs.map((c,i)=>{const st=rstd(c);
+  return`<tr data-ri="${i}">
+  <td data-l="編號"><input class="t" data-f="id" value="${esc(c.id)}" style="min-width:4.5em;width:5em"></td>
+  <td data-l="敏感受體" class="w"><input class="t" data-f="name" value="${esc(c.name)}"></td>
+  <td data-l="噪音管制區"><select data-f="zone">${opt(ZONES,c.zone)}</select></td>
+  <td data-l="所在地類別" class="w"><select data-f="loc">${opt(LOCS,c.loc)}</select></td>
+  <td data-l="特定管制區"><input type="checkbox" data-f="spec"${c.spec?' checked':''}></td>
+  <td data-l="背景 dB(A)" class="n"><input type="number" step="0.1" data-f="bg" value="${c.bg}"></td>
+  <td data-l="距離 m" class="n"><input type="number" min="1" step="1" data-f="d" value="${c.d}"></td>
+  <td data-l="方位°" class="n"><input type="number" min="0" max="359" step="1" data-f="brg" value="${c.brg||0}"></td>
+  <td data-l="標準" class="n">${st==null?'無標準':st}</td>
+  <td class="act"><button class="x" data-a="del" aria-label="刪除" title="刪除">✕</button></td></tr>`}).join('')||'<tr><td colspan="10" style="padding:20px 6px;color:var(--mute)">還沒有受體。</td></tr>';
+ drawMap()}
+function renderReceivers(){
+ $('m-no').classList.toggle('on',S.mode==='no');$('m-yes').classList.toggle('on',S.mode!=='no');
+ const useIL=S.mode!=='no';
+ $('imph').textContent=`施工噪音影響摘要（${useIL?'有對策':'無對策'}・${PN[S.per]}）`;
+ const badNo=S.recs.filter(r=>recImpact(r,false).bad).length,badY=S.recs.filter(r=>recImpact(r,true).bad).length;
+ $('impsum').innerHTML=S.recs.length?`判定超標：無對策 <b>${badNo}</b>／有對策 <b>${badY}</b>（共 ${S.recs.length} 處受體）${badY?'，對策後仍超標，請加強減音設施、圍籬或檢討工法':badNo?'，對策足以改善為合格':''}`:'';
+ const G0=groups();
+ if(!G0.length||!S.recs.length){$('imat').innerHTML='<tbody><tr><td style="padding:20px 6px;color:var(--mute)">需先有機具與受體。</td></tr></tbody>';return}
+ const head=`<thead><tr><th>敏感受體</th><th class="n">背景</th><th class="n">距離 m</th>${G0.map(g=>`<th class="n" title="${esc(g.pro)}">${esc(g.item)}</th>`).join('')}<th class="n">最大</th><th class="n">合成</th><th class="n">增量</th><th class="n">標準</th><th class="n">餘裕</th><th>判定</th><th>影響等級</th></tr></thead>`;
+ const body=S.recs.map(rec=>{const G=groups(rec.d,useIL),st=rstd(rec);
+  const mx=Math.max(...G.map(g=>g.F).filter(Number.isFinite));
+  const add=10*lg(10**(rec.bg/10)+10**(mx/10));
+  const gr=st==null?null:grade(rec.bg,add,st);
+  return`<tr><td>${esc(rec.name)}<br><small style="color:var(--mute)">${esc(rec.zone)}</small></td><td class="n">${r1(+rec.bg)}</td><td class="n">${rec.d}</td>${G.map(g=>`<td class="n${g.F>(st??Infinity)?' bad':''}">${r1(g.F)}</td>`).join('')}<td class="n"><b>${r1(mx)}</b></td><td class="n">${r1(add)}</td><td class="n">${gr?r1(gr.dif):'—'}</td><td class="n">${st==null?'—':st}</td><td class="n">${st==null?'—':r1(st-add)}</td><td class="${st!=null&&add>st?'bad':''}">${st==null?'—':(add<=st?'合格':'超標')}</td><td class="${gr&&gr.bad?'bad':''}">${gr?gr.txt:'無標準'}</td></tr>`}).join('');
+ $('imat').innerHTML=head+'<tbody>'+body+'</tbody>';
+}
+function renderDB(){const q=($('q').value||'').trim(),c=$('qcat').value;
+ const L=EQ.filter(e=>(!c||e[0]===c)&&(!q||e[1].includes(q)||e[0].includes(q)));
+ $('dbody').innerHTML=L.map(e=>`<tr><td>${esc(e[0])}</td><td>${esc(e[1])}</td><td class="n">${e[2]}</td><td class="n">${e[3]??'—'}</td><td class="n">${e[4]??'—'}</td><td>${esc(e[5])}</td><td>${esc(e[6])}</td></tr>`).join('')||'<tr><td colspan="7" style="color:var(--mute);padding:16px 6px">沒有符合的機具</td></tr>';}
+function renderStd(){const cz=ZONES[S.zone];
+ $('sbody').innerHTML=STD2.map(s=>{const hl=s[0]==='營建工程'&&s[1]===cz;
+  const v=x=>x==null?'—':x;
+  return`<tr>${[s[0],s[1]].map(x=>`<td${hl?' class="hl"':''}>${esc(x)}</td>`).join('')}${s.slice(2,14).map(x=>`<td class="n${hl?' hl':''}">${v(x)}</td>`).join('')}<td${hl?' class="hl"':''}>${esc(s[14])}</td></tr>`}).join('');}
+function tsv(k){const st=cstd(),T='\t';
+ if(k==='sum'){const L=[['工程名稱','工程項目','機具','Lw','Lw_LF','數量','距離m','圍籬IL','無防音音量','有防音音量','無防音合成','有防音合成','全頻標準','Lmax標準','低頻標準','無防音判定','有防音判定'].join(T)];
+  const G1=groups(undefined,false),G2=groups(undefined,true);
+  G1.forEach((g,gi)=>g.idx.forEach(i=>{const r=S.rows[i],a=calc(r,undefined,false)||{},b=calc(r)||{};
+   L.push([r.pro,r.item,r.equ,a.lw,a.lf,r.q,r.d,r.il,r1(a.F),r1(b.F),r1(g.F),r1(G2[gi].F),st.F,st.M,st.L,g.F<=st.F?'合格':'超標',G2[gi].F<=st.F?'合格':'超標'].join(T))}));
+  return L.join('\n')}
+ if(k==='imp'){const useIL=S.mode!=='no';
+  const L=[['敏感受體','背景','距離m','工程名稱','工程項目','衰減後營建噪音','施工期間最大','合成','增量','標準','餘裕','判定','影響等級'].join(T)];
+  S.recs.forEach(rec=>{const G=groups(rec.d,useIL),stx=rstd(rec);
+   const mx=Math.max(...G.map(g=>g.F).filter(Number.isFinite));
+   const add=10*lg(10**(rec.bg/10)+10**(mx/10));
+   const gr=stx==null?null:grade(rec.bg,add,stx);
+   G.forEach(g=>L.push([rec.name,rec.bg,rec.d,g.pro,g.item,r1(g.F),r1(mx),r1(add),gr?r1(gr.dif):'',stx??'',stx==null?'':r1(stx-add),stx==null?'':(add<=stx?'合格':'超標'),gr?gr.txt:''].join(T)))});
+  return L.join('\n')}
+ const L=[['工程名稱','工程項目','機具','聲功率','ID','X','Y','Z','LWTYP','LW_LI','FREQ'].join(T)];
+ let G=groups(),n=0;
+ G.forEach((g,gi)=>{let X=0;g.idx.forEach(i=>{const r=S.rows[i],e=EQMAP.get(r.equ);if(!e)return;
+  for(let j=1;j<=Math.max(+r.q||1,1);j++){n++;
+   L.push([r.pro,r.item,j>1?r.equ+'_'+j:r.equ,e[2],'!'+String(gi).padStart(2,'0')+'!C'+String(n).padStart(2,'0'),X,0,e[4]??0.5,'Lw',e[6]||'',' '].join(T));X+=10}})});
+ return L.join('\n')}
+const bs=$('bsvg');
+function il(){const v=k=>+$(k).value||0;const Sh=v('sh'),Bh=v('bh'),Rh=v('rh'),d1=Math.max(v('d1'),0.01),d2=Math.max(v('d2'),0.01),hz=Math.max(v('hz'),20);
+ const los=Sh+(Rh-Sh)*d1/(d1+d2),A=Math.hypot(d1,Bh-Sh),B=Math.hypot(d2,Bh-Rh),D=Math.hypot(d1+d2,Rh-Sh),dl=A+B-D,lam=340/hz,N=2*dl/lam;
+ let IL=0;if(Bh>los&&N>0){const x=Math.sqrt(2*Math.PI*N);IL=Math.min(20,20*lg(x/Math.tanh(x))+5)}
+ return{Sh,Bh,Rh,d1,d2,los,dl,N,IL,blk:Bh>los}}
+function drawB(){const b=il();$('ilres').textContent=b.IL.toFixed(1)+' dB';
+ $('ilinfo').innerHTML=b.blk?`路徑差 δ = ${b.dl.toFixed(3)} m，Fresnel 數 N = ${b.N.toFixed(2)}${b.IL>=20?'，已達上限 20 dB':''}`:'圍籬未遮斷視線，插入損失取 0';
+ const W=bs.clientWidth,H=bs.clientHeight;if(!W)return;const m=36,hmax=Math.max(b.Sh,b.Bh,b.Rh,1)*1.35,tot=b.d1+b.d2;
+ const X=x=>m+x/tot*(W-2*m),Y=y=>H-28-y/hmax*(H-60);const sx=X(0),bx=X(b.d1),rx=X(tot);
+ bs.innerHTML=`<line x1="0" y1="${Y(0)}" x2="${W}" y2="${Y(0)}" stroke="var(--ink)" stroke-width="2"/>
+ <rect x="${bx-4}" y="${Y(b.Bh)}" width="8" height="${Y(0)-Y(b.Bh)}" fill="var(--yel)" stroke="var(--ink)"/>
+ <line x1="${sx}" y1="${Y(b.Sh)}" x2="${rx}" y2="${Y(b.Rh)}" stroke="var(--mute)" stroke-dasharray="5 5"/>
+ ${b.blk?`<polyline points="${sx},${Y(b.Sh)} ${bx},${Y(b.Bh)} ${rx},${Y(b.Rh)}" fill="none" stroke="var(--bad)" stroke-width="2"/>`:''}
+ <circle cx="${sx}" cy="${Y(b.Sh)}" r="7" fill="var(--ink)"/><circle cx="${rx}" cy="${Y(b.Rh)}" r="7" fill="var(--bg)" stroke="var(--ink)" stroke-width="2"/>
+ <text x="${sx}" y="${Y(0)+20}" text-anchor="start">音源</text><text x="${bx}" y="${Y(b.Bh)-8}" text-anchor="middle">圍籬 ${b.Bh} m</text><text x="${rx}" y="${Y(0)+20}" text-anchor="end">受體</text>
+ <text x="${(sx+bx)/2}" y="${Y(0)-6}" text-anchor="middle">${b.d1} m</text><text x="${(bx+rx)/2}" y="${Y(0)-6}" text-anchor="middle">${b.d2} m</text>`}
+const VIEWS=['file','site','recs','boundary','receivers','db','std','output'];
+function route(){let v=location.hash.slice(1);if(!VIEWS.includes(v))v='boundary';
+ VIEWS.forEach(x=>$('v-'+x).hidden=x!==v);
+ [...document.querySelectorAll('.tabs a')].forEach(a=>a.classList.toggle('on',a.hash==='#'+v));
+ render();if(v==='boundary')drawB()}
+function renderSet(){$('pname').value=S.name;$('zone').value=S.zone;$('per').value=S.per;$('spec').checked=S.spec;$('exc').checked=S.exc;$('ttl').textContent=S.name||'營建噪音計算'}
+function render(){const v=VIEWS.find(x=>!$('v-'+x).hidden)||'boundary';
+ if(v==='boundary')renderBoundary();else if(v==='site')renderSite();else if(v==='recs')renderRecs();else if(v==='receivers')renderReceivers();else if(v==='db')renderDB();else if(v==='std')renderStd();
+ renderSteps();save()}
+function stepData(){const stc=cstd(),G=groups(),G0=groups(undefined,false);
+ const over=G.filter(g=>g.F>stc.F).length,over0=G0.filter(g=>g.F>stc.F).length;
+ const badY=S.recs.filter(r=>recImpact(r,true).bad).length;
+ return[
+ {h:'file',t:'1 專案',ok:!!(S.name&&S.name.trim()),msg:S.name&&S.name.trim()?'已命名':'未命名'},
+ {h:'site',t:'2 工區',ok:S.site.L>0&&S.site.W>0,msg:`${S.site.L}×${S.site.W} m・設施${S.meas.filter(m=>m.on).length}項`},
+ {h:'boundary',t:'3 周界',ok:S.rows.length>0&&over===0,warn:S.rows.length>0&&over>0,msg:S.rows.length?`超標 ${over0}→${over} 組`:'未輸入機具'},
+ {h:'recs',t:'4 受體',ok:S.recs.length>0,msg:S.recs.length?`${S.recs.length} 處`:'未設定'},
+ {h:'receivers',t:'5 影響',ok:S.recs.length>0&&S.rows.length>0&&badY===0,warn:badY>0,msg:S.recs.length&&S.rows.length?`對策後超標 ${badY} 處`:'—'},
+ {h:'output',t:'6 輸出',ok:S.rows.length>0,msg:'摘要・CadnaA'}]}
+function renderSteps(){const cur=location.hash.slice(1)||'boundary';
+ $('steps').innerHTML=stepData().map(s=>`<a href="#${s.h}" class="${s.warn?'warn':s.ok?'ok':''}${cur===s.h?' cur':''}"><i></i>${s.t}<span>${s.msg}</span></a>`).join('')}
+
+$('tbody').addEventListener('change',ev=>{const t=ev.target,tr=t.closest('tr[data-i]');if(!tr||!t.dataset.f)return;
+ push();const r=S.rows[+tr.dataset.i],f=t.dataset.f;let v=t.value;
+ if(f==='q')v=Math.max(1,Math.round(+v||1));if(f==='d')v=Math.max(0.1,+v||0.1);if(f==='il')v=Math.max(0,+v||0);
+ r[f]=v;if(f==='cat'){const first=EQ.find(e=>e[0]===v);r.equ=first?first[1]:''}
+ render()});
+$('tbody').addEventListener('click',ev=>{const b=ev.target.closest('button[data-a]');if(!b)return;const i=+b.closest('tr').dataset.i;push();
+ if(b.dataset.a==='del')S.rows.splice(i,1);else S.rows.splice(i+1,0,{...S.rows[i]});render()});
+$('rbody').addEventListener('change',ev=>{const t=ev.target,tr=t.closest('tr[data-ri]');if(!tr||!t.dataset.f)return;
+ push();const c=S.recs[+tr.dataset.ri],f=t.dataset.f;
+ c[f]=f==='spec'?t.checked:(f==='bg'||f==='d'||f==='brg')?+t.value||0:t.value;render()});
+$('rbody').addEventListener('click',ev=>{const b=ev.target.closest('button[data-a]');if(!b)return;push();
+ S.recs.splice(+b.closest('tr').dataset.ri,1);render()});
+$('radd').onclick=()=>{push();S.recs.push({id:'R'+String(S.recs.length+1).padStart(3,'0'),name:'新受體',zone:ZONES[2],loc:LOCS[2],spec:false,bg:60,d:100,brg:(45+S.recs.length*60)%360});render()};
+$('m-no').onclick=()=>{push();S.mode='no';render()};
+$('m-yes').onclick=()=>{push();S.mode='yes';render()};
+$('add').onclick=()=>{push();const l=S.rows[S.rows.length-1];const e=EQ.find(x=>x[0]==='土方工程');
+ S.rows.push({pro:l?.pro||'新工程',item:l?.item||'土方工程',cat:e[0],equ:e[1],q:1,d:15,il:0});render();
+ const rs=$('tbody').querySelectorAll('tr[data-i]');rs[rs.length-1]?.scrollIntoView({block:'center'})};
+$('undo').onclick=()=>{const t=hist.pop();if(t){S=JSON.parse(t);renderSet();render()}$('undo').disabled=!hist.length};
+$('rst').onclick=()=>{push();S=fresh();renderSet();render()};
+$('clr').onclick=()=>{push();S.rows=[];render()};
+$('pname').onchange=e=>{push();S.name=e.target.value;renderSet();render()};
+$('zone').onchange=e=>{push();S.zone=+e.target.value;render()};
+$('per').onchange=e=>{push();S.per=+e.target.value;render()};
+$('spec').onchange=e=>{push();S.spec=e.target.checked;render()};
+$('exc').onchange=e=>{push();S.exc=e.target.checked;render()};
+$('q').addEventListener('input',renderDB);
+$('qcat').addEventListener('change',renderDB);
+[...document.querySelectorAll('.cp')].forEach(b=>b.onclick=async()=>{const txt=tsv(b.dataset.k),o=$('out'),t0=b.textContent;
+ try{await navigator.clipboard.writeText(txt);b.textContent='已複製 ✓';setTimeout(()=>b.textContent=t0,1800)}
+ catch(e){o.value=txt;o.classList.add('on');o.select()}});
+['sh','bh','rh','d1','d2','hz'].forEach(k=>$(k).addEventListener('input',drawB));
+const bro=new ResizeObserver(()=>{if(!$('v-boundary').hidden)drawB()});bro.observe(bs);
+$('ilapply').onclick=()=>{const k=$('ilgrp').value;if(!k)return;const v=+il().IL.toFixed(1);push();
+ S.rows.forEach(r=>{if((r.pro||'')+'｜'+(r.item||'')===k)r.il=v});render();$('ilapply').textContent='已套用 ✓';setTimeout(()=>$('ilapply').textContent='套用',1500)};
+const proj=()=>JSON.stringify({app:'cnc',ver:2,saved:new Date().toISOString(),data:S});
+let DLNS=null;window.claude?.use?.('downloads')?.then(ns=>{DLNS=ns});
+async function dl(name,text,mime,el){
+ if(DLNS){try{await DLNS.save({filename:name,data:text});if(el)el.textContent='已下載 '+name+'。'}
+  catch(e){if(el)el.textContent='下載未完成（可能已取消），可改用複製。'}return}
+ try{const b=new Blob([text],{type:mime}),a=document.createElement('a');
+ a.href=URL.createObjectURL(b);a.download=name;document.body.append(a);a.click();a.remove();
+ if(el)el.textContent='已嘗試下載 '+name+'；若沒出現下載，請改用複製。'}
+ catch(e){if(el)el.textContent='此環境不允許下載，請改用複製。'}}
+function importProj(txt){try{const o=JSON.parse(txt),d=o&&o.data&&o.data.rows?o.data:(o&&o.rows?o:null);
+ if(!d)throw 0;push();S=d;if(!S.recs)S.recs=[];if(!S.mode)S.mode='no';S.recs.forEach((c,i)=>{if(c.brg==null)c.brg=(45+i*120)%360});renderSet();render();
+ $('fmsg').textContent='已匯入「'+(S.name||'未命名')+'」：機具 '+S.rows.length+' 筆、受體 '+S.recs.length+' 筆。'}
+ catch(e){$('fmsg').textContent='匯入失敗：不是有效的專案 JSON。'}}
+$('fsave').onclick=()=>dl((S.name||'專案')+'.json',proj(),'application/json',$('fmsg'));
+$('fcopy').onclick=async()=>{try{await navigator.clipboard.writeText(proj());$('fcopy').textContent='已複製 ✓';setTimeout(()=>$('fcopy').textContent='複製專案 JSON',1500)}catch(e){$('fpaste').value=proj();$('fmsg').textContent='剪貼簿被拒，已填入欄位請手動複製。'}};
+$('fopen').addEventListener('change',ev=>{const f=ev.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>importProj(r.result);r.readAsText(f);ev.target.value=''});
+$('fimp').onclick=()=>importProj($('fpaste').value);
+const csvOf=t=>'\uFEFF'+t.split('\n').map(l=>l.split('\t').map(c=>/[",\n]/.test(c)?'"'+c.replace(/"/g,'""')+'"':c).join(',')).join('\r\n');
+[...document.querySelectorAll('.dlb')].forEach(b=>b.onclick=()=>dl({sum:'工區噪音摘要表',imp:'施工噪音影響摘要',cad:'CadnaA點音源'}[b.dataset.k]+'.csv',csvOf(tsv(b.dataset.k)),'text/csv;charset=utf-8',$('omsg')));
+function refreshLists(){$('dlp').innerHTML=S.pros.map(p=>`<option value="${esc(p)}">`).join('');$('dli').innerHTML=S.items.map(p=>`<option value="${esc(p)}">`).join('')}
+const ss=$('ssvg');
+function drawSite(){const W0=ss.clientWidth,H0=ss.clientHeight;if(!W0)return;const st=S.site,m=48;
+ const sc=Math.min((W0-2*m)/Math.max(st.L,1),(H0-2*m)/Math.max(st.W,1));
+ const w=Math.max(st.L*sc,20),h=Math.max(st.W*sc,20),x0=(W0-w)/2,y0=(H0-h)/2,cx=x0+w/2,cy=y0+h/2;
+ const vert=st.W<=st.L,ex=vert?cx:x0,ey=vert?y0:cy;
+ ss.innerHTML=`<rect x="${x0}" y="${y0}" width="${w}" height="${h}" fill="var(--bg)" stroke="var(--yel)" stroke-width="6"/>
+ <rect x="${x0}" y="${y0}" width="${w}" height="${h}" fill="none" stroke="var(--ink)" stroke-width="1.5"/>
+ <circle cx="${cx}" cy="${cy}" r="6" fill="var(--ink)"/>
+ <line x1="${cx}" y1="${cy}" x2="${ex}" y2="${ey}" stroke="var(--bad)" stroke-width="2" stroke-dasharray="5 4"/>
+ <text x="${cx}" y="${cy+22}" text-anchor="middle">機具（置中）</text>
+ <text x="${(cx+ex)/2+6}" y="${(cy+ey)/2-6}" text-anchor="start">${r1(Math.min(st.L,st.W)/2)} m</text>
+ <text x="${cx}" y="${y0+h+24}" text-anchor="middle">L ${st.L} m</text>
+ <text x="${x0+w-4}" y="${cy}" text-anchor="end">W ${st.W} m</text>
+ <text x="${x0}" y="${y0-12}" text-anchor="start">施工圍籬 ${st.fh} m／減音 ${st.fil} dB</text>`}
+function renderSite(){const st=S.site;
+ $('siteL').value=st.L;$('siteW').value=st.W;$('siteFh').value=st.fh;$('siteFil').value=st.fil;
+ const pb=Math.min(st.L,st.W)/2,dg=Math.hypot(st.L,st.W)/2,ex=extraIL();
+ $('siteinfo').innerHTML=`面積 <b>${(st.L*st.W).toLocaleString()}</b> m²　中央至周界 <b>${r1(pb)}</b> m　至角隅 <b>${r1(dg)}</b> m　勾選設施合計 <b>${ex?'−'+r1(ex):'0.0'}</b> dB`;
+ $('mbody').innerHTML=S.meas.map((m2,i)=>`<tr data-mi="${i}">
+  <td><input type="checkbox" data-f="on"${m2.on?' checked':''}></td>
+  <td><select data-f="how">${HOWS.map(h=>`<option${h===m2.how?' selected':''}>${h}</option>`).join('')}</select></td>
+  <td><input class="t" data-f="what" value="${esc(m2.what)}"></td>
+  <td class="n"><input type="number" min="0" step="0.5" data-f="db" value="${m2.db}"></td>
+  <td class="act"><button class="x" data-a="del" aria-label="刪除" title="刪除">✕</button></td></tr>`).join('')||'<tr><td colspan="5" style="color:var(--mute);padding:14px 6px">尚無設施，按「＋ 新增設施」。</td></tr>';
+ $('plist').value=S.pros.join('\n');$('ilist').value=S.items.join('\n');
+ drawSite()}
+function toastBtn(b){const t0=b.textContent;b.textContent='已套用 ✓';setTimeout(()=>b.textContent=t0,1400)}
+[['siteL','L'],['siteW','W'],['siteFh','fh'],['siteFil','fil']].forEach(([id,k])=>$(id).addEventListener('change',e=>{push();S.site[k]=Math.max(0,+e.target.value||0);render()}));
+$('mbody').addEventListener('change',ev=>{const t2=ev.target,tr=t2.closest('tr[data-mi]');if(!tr||!t2.dataset.f)return;
+ push();const m2=S.meas[+tr.dataset.mi],f=t2.dataset.f;
+ m2[f]=f==='on'?t2.checked:f==='db'?Math.max(0,+t2.value||0):t2.value;render()});
+$('mbody').addEventListener('click',ev=>{const b=ev.target.closest('button[data-a]');if(!b)return;push();S.meas.splice(+b.closest('tr').dataset.mi,1);render()});
+$('madd').onclick=()=>{push();S.meas.push({on:false,how:HOWS[0],what:'',db:0});render()};
+$('aD').onclick=()=>{push();const d=Math.max(Math.min(S.site.L,S.site.W)/2,0.1);S.rows.forEach(r=>r.d=+d.toFixed(1));render();toastBtn($('aD'))};
+$('aIL').onclick=()=>{push();S.rows.forEach(r=>r.il=+S.site.fil||0);render();toastBtn($('aIL'))};
+$('plist').addEventListener('change',e=>{push();S.pros=e.target.value.split('\n').map(s=>s.trim()).filter(Boolean);refreshLists();save()});
+$('ilist').addEventListener('change',e=>{push();S.items=e.target.value.split('\n').map(s=>s.trim()).filter(Boolean);refreshLists();save()});
+const sro=new ResizeObserver(()=>{if(!$('v-site').hidden)drawSite()});sro.observe(ss);
+function recImpact(rec,useIL){if(useIL===undefined)useIL=S.mode!=='no';const G=groups(rec.d,useIL),st=rstd(rec);
+ const mx=Math.max(...G.map(g=>g.F).filter(Number.isFinite));
+ if(!Number.isFinite(mx))return{};
+ const add=10*lg(10**(rec.bg/10)+10**(mx/10));return{st,add,bad:st!=null&&add>st}}
+const ms=$('msvg');let dragRi=-1,dragSc=0,mapMode='drag',MPTS=[];
+function mapScale(W0,H0){const Rmax=Math.max(60,...S.recs.map(c=>+c.d||0))*1.18;
+ return{Rmax,sc:(Math.min(W0,H0)/2-34)/Rmax}}
+function drawMap(){const W0=ms.clientWidth,H0=ms.clientHeight;if(!W0)return;
+ const cx=W0/2,cy=H0/2,{Rmax,sc}=mapScale(W0,H0);
+ const steps=[25,50,100,150,200,250,300,400,500,750,1000,1500,2000];
+ const stp=steps.find(s=>Rmax/s<=4)||2500;
+ let rings='';for(let r=stp;r<=Rmax;r+=stp)rings+=`<circle cx="${cx}" cy="${cy}" r="${r*sc}" fill="none" stroke="var(--line)" stroke-dasharray="4 5"/><text x="${cx+5}" y="${cy-r*sc-5}" fill="var(--mute)">${r} m</text>`;
+ const sw=Math.max(S.site.L*sc,16),sh2=Math.max(S.site.W*sc,12);
+ const recs=S.recs.map((c,i)=>{const b=(c.brg||0)*Math.PI/180,x=cx+(+c.d||0)*sc*Math.sin(b),y=cy-(+c.d||0)*sc*Math.cos(b);
+  const im=recImpact(c),col=im.bad?'var(--bad)':'var(--acc)';
+  return`<line x1="${cx}" y1="${cy}" x2="${x}" y2="${y}" stroke="${col}" stroke-opacity=".4" stroke-dasharray="3 4"/>
+  <circle class="rpin" data-ri="${i}" cx="${x}" cy="${y}" r="9" fill="${col}" stroke="var(--bg)" stroke-width="2" style="cursor:grab"/>
+  <text x="${x}" y="${y-14}" text-anchor="middle">${esc(c.name)}</text>
+  <text x="${x}" y="${y+26}" text-anchor="middle" fill="var(--mute)">${Math.round(c.d)} m・${Math.round(c.brg||0)}°</text>`}).join('');
+ ms.innerHTML=`<line x1="${cx}" y1="14" x2="${cx}" y2="${H0-14}" stroke="var(--line)"/>
+ <line x1="14" y1="${cy}" x2="${W0-14}" y2="${cy}" stroke="var(--line)"/>
+ ${rings}
+ <rect x="${cx-sw/2}" y="${cy-sh2/2}" width="${sw}" height="${sh2}" fill="color-mix(in srgb,var(--yel) 22%,transparent)" stroke="var(--yel)" stroke-width="2"/>
+ <text x="${cx}" y="${cy-sh2/2-8}" text-anchor="middle">工區 ${S.site.L}×${S.site.W} m</text>
+ <text x="${cx+8}" y="28" fill="var(--mute)">N ↑</text>
+ ${recs}
+ ${MPTS.length?(()=>{let seg='',tot=0;
+  for(let i=0;i<MPTS.length;i++){const p=MPTS[i],x=cx+p.mx*sc,y=cy+p.my*sc;
+   seg+=`<circle cx="${x}" cy="${y}" r="4" fill="var(--yel)"/>`;
+   if(i){const q=MPTS[i-1],qx=cx+q.mx*sc,qy=cy+q.my*sc,dmm=Math.hypot(p.mx-q.mx,p.my-q.my);tot+=dmm;
+    seg+=`<line x1="${qx}" y1="${qy}" x2="${x}" y2="${y}" stroke="var(--yel)" stroke-width="2"/><text x="${(qx+x)/2}" y="${(qy+y)/2-6}" text-anchor="middle" fill="var(--yel)">${Math.round(dmm)} m</text>`}}
+  const l=MPTS[MPTS.length-1];
+  if(MPTS.length>1)seg+=`<text x="${cx+l.mx*sc}" y="${cy+l.my*sc+26}" text-anchor="middle" font-weight="700" fill="var(--yel)">合計 ${Math.round(tot)} m</text>`;
+  return seg})():''}`}
+function evtM(e){const r=ms.getBoundingClientRect(),sc=mapScale(r.width,r.height).sc;
+ return{mx:(e.clientX-r.left-r.width/2)/sc,my:(e.clientY-r.top-r.height/2)/sc}}
+function mmOut(){let tot=0;for(let i=1;i<MPTS.length;i++)tot+=Math.hypot(MPTS[i].mx-MPTS[i-1].mx,MPTS[i].my-MPTS[i-1].my);
+ $('mm-out').textContent=MPTS.length>1?`量測合計 ${Math.round(tot)} m`:(mapMode==='meas'?'點擊地圖取點量距離':'');
+ $('mm-clr').hidden=!MPTS.length}
+function setMapMode(m){mapMode=m;['drag','meas','add'].forEach(k=>$('mm-'+k).classList.toggle('on',k===m));
+ ms.style.cursor=m==='drag'?'':'crosshair';mmOut()}
+$('mm-drag').onclick=()=>setMapMode('drag');
+$('mm-meas').onclick=()=>setMapMode('meas');
+$('mm-add').onclick=()=>setMapMode('add');
+$('mm-clr').onclick=()=>{MPTS=[];mmOut();drawMap()};
+ms.addEventListener('pointerdown',e=>{
+ if(mapMode==='meas'){MPTS.push(evtM(e));mmOut();drawMap();return}
+ if(mapMode==='add'){const p=evtM(e),d=Math.max(1,Math.round(Math.hypot(p.mx,p.my))),brg=Math.round((Math.atan2(p.mx,-p.my)*180/Math.PI+360)%360);
+  push();S.recs.push({id:'R'+String(S.recs.length+1).padStart(3,'0'),name:'新受體'+(S.recs.length+1),zone:ZONES[2],loc:LOCS[2],spec:false,bg:60,d,brg});render();return}
+ const c=e.target.closest('.rpin');if(!c)return;
+ dragRi=+c.dataset.ri;const r=ms.getBoundingClientRect();dragSc=mapScale(r.width,r.height).sc;
+ ms.setPointerCapture(e.pointerId);push();e.preventDefault()});
+const inArt=!!(window.claude&&window.claude.use);
+if(!inArt){$('gmapcard').hidden=false;
+ const glocate=()=>{const q=$('gq').value.trim()||S.name||'台灣';
+  let fr=$('gframe').querySelector('iframe');
+  if(!fr){fr=document.createElement('iframe');fr.style.cssText='position:absolute;inset:0;width:100%;height:100%;border:0';fr.loading='lazy';fr.referrerPolicy='no-referrer-when-downgrade';$('gframe').innerHTML='';$('gframe').append(fr)}
+  fr.src='https://maps.google.com/maps?q='+encodeURIComponent(q)+'&t='+$('gt').value+'&z=16&hl=zh-TW&output=embed';
+  $('gopen').href='https://www.google.com/maps/search/'+encodeURIComponent(q);$('gopen').hidden=false};
+ $('ggo').onclick=glocate;
+ $('gt').addEventListener('change',()=>{if($('gframe').querySelector('iframe'))glocate()});
+ $('gq').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();glocate()}})}
+ms.addEventListener('pointermove',e=>{if(dragRi<0)return;const r=ms.getBoundingClientRect();
+ const dx=e.clientX-r.left-r.width/2,dy=e.clientY-r.top-r.height/2;
+ const c=S.recs[dragRi];if(!c)return;
+ c.d=Math.max(1,Math.round(Math.hypot(dx,dy)/dragSc));
+ c.brg=Math.round((Math.atan2(dx,-dy)*180/Math.PI+360)%360);drawMap()});
+['pointerup','pointercancel'].forEach(ev=>ms.addEventListener(ev,()=>{if(dragRi<0)return;dragRi=-1;render()}));
+const mro=new ResizeObserver(()=>{if(!$('v-recs').hidden)drawMap()});mro.observe(ms);
+addEventListener('hashchange',route);
+
+const boot=d=>{S=(d&&d.rows)?d:(load()||fresh());if(!S.recs)S.recs=RECS0.map(mkC);if(!S.mode)S.mode='no';
+ if(!S.site)S.site={L:100,W:60,fh:3,fil:0};if(!S.meas)S.meas=MEAS0.map(mkM);
+ S.recs.forEach((c,i)=>{if(c.brg==null)c.brg=(45+i*120)%360});
+ if(!S.pros||!S.pros.length)S.pros=[...PROS];if(!S.items||!S.items.length)S.items=[...ITEMS];
+ $('zone').innerHTML=ZONES.map((z,i)=>`<option value="${i}">${z}</option>`).join('');
+ $('qcat').innerHTML='<option value="">全部</option>'+CATS.map(c=>`<option>${esc(c)}</option>`).join('');
+ const pdl=document.createElement('datalist');pdl.id='dlp';
+ const idl=document.createElement('datalist');idl.id='dli';
+ document.body.append(pdl,idl);refreshLists();
+ renderSet();route();drawB()};
+window.claude?.hot?.snapshot?.(()=>S);
+window.claude?.hot?.ready?window.claude.hot.ready(boot):boot(window.claude?.hot?.data??null);
+}
+</script>
+</body>
+</html>
